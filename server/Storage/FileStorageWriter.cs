@@ -35,7 +35,7 @@ public sealed class FileStorageConfig
 /// Each record is written as a single-line JSON object.
 /// Thread-safe with locking for concurrent append operations.
 /// </summary>
-public sealed class FileStorageWriter : IStorageWriter, IDisposable
+public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDisposable
 {
     private readonly FileStorageConfig _config;
     private readonly ILogger<FileStorageWriter> _logger;
@@ -163,8 +163,26 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         _logger.LogInformation("Created new storage file: {FilePath}", _currentFilePath);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await _writeLock.WaitAsync();
+        try
+        {
+            if (_currentWriter != null)
+            {
+                await _currentWriter.DisposeAsync();
+            }
+        }
+        finally
+        {
+            _writeLock.Dispose();
+        }
+    }
+
     public void Dispose()
     {
+        // Use synchronous disposal - safe for synchronous contexts
+        // For async contexts, prefer DisposeAsync()
         _writeLock.Wait();
         try
         {
