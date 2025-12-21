@@ -171,6 +171,7 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
             if (_currentWriter != null)
             {
                 await _currentWriter.DisposeAsync();
+                _currentWriter = null;
             }
         }
         finally
@@ -186,7 +187,11 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
         _writeLock.Wait();
         try
         {
-            _currentWriter?.Dispose();
+            if (_currentWriter != null)
+            {
+                _currentWriter.Dispose();
+                _currentWriter = null;
+            }
         }
         finally
         {
