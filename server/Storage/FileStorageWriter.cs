@@ -72,40 +72,38 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         StorageRecord record,
         CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireLockAsync(cancellationToken))
         {
-            // Rotate file if needed
-            if (_currentWriter == null || _currentFileSize >= _config.MaxFileSizeBytes)
+            try
             {
-                await RotateFileAsync();
+                // Rotate file if needed
+                if (_currentWriter == null || _currentFileSize >= _config.MaxFileSizeBytes)
+                {
+                    await RotateFileAsync();
+                }
+
+                // Serialize record to JSON (single line)
+                var json = JsonSerializer.Serialize(record, _jsonOptions);
+                
+                // Append to file
+                await _currentWriter!.WriteLineAsync(json);
+                await _currentWriter.FlushAsync(cancellationToken);
+                // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
+                _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
+
+                _logger.LogDebug(
+                    "Appended record from agent {AgentId} to {FilePath}",
+                    record.AgentInstanceId,
+                    _currentFilePath);
             }
-
-            // Serialize record to JSON (single line)
-            var json = JsonSerializer.Serialize(record, _jsonOptions);
-            
-            // Append to file
-            await _currentWriter!.WriteLineAsync(json);
-            await _currentWriter.FlushAsync(cancellationToken);
-            // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
-            _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
-
-            _logger.LogDebug(
-                "Appended record from agent {AgentId} to {FilePath}",
-                record.AgentInstanceId,
-                _currentFilePath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to append record from agent {AgentId}",
-                record.AgentInstanceId);
-            // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
-        }
-        finally
-        {
-            _writeLock.Release();
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to append record from agent {AgentId}",
+                    record.AgentInstanceId);
+                // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
+            }
         }
     }
 
@@ -114,18 +112,13 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// </summary>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireLockAsync(cancellationToken))
         {
             if (_currentWriter != null)
             {
-                await _currentWriter.FlushAsync();
+                await _currentWriter.FlushAsync(cancellationToken);
                 _logger.LogDebug("Flushed storage to {FilePath}", _currentFilePath);
             }
-        }
-        finally
-        {
-            _writeLock.Release();
         }
     }
 
@@ -161,6 +154,48 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         _currentFileSize = 0;
 
         _logger.LogInformation("Created new storage file: {FilePath}", _currentFilePath);
+    }
+
+    /// <summary>
+    /// Acquire the write lock asynchronously and return a disposable that releases it.
+    /// </summary>
+    private async Task<IDisposable> AcquireLockAsync(CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        return new LockReleaser(_writeLock);
+    }
+
+    /// <summary>
+    /// Helper struct to release the semaphore when disposed.
+    /// </summary>
+    private struct LockReleaser : IDisposable
+    {
+        private readonly SemaphoreSlim _semaphore;
+        private bool _disposed;
+
+        public LockReleaser(SemaphoreSlim semaphore)
+        {
+            _semaphore = semaphore ?? throw new ArgumentNullException(nameof(semaphore));
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+
+            try
+            {
+                _semaphore.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Semaphore was already disposed, ignore
+            }
+        }
     }
 
     public void Dispose()
