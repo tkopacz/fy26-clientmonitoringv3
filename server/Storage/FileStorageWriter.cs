@@ -176,7 +176,6 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         public LockReleaser(SemaphoreSlim semaphore)
         {
             _semaphore = semaphore ?? throw new ArgumentNullException(nameof(semaphore));
-            _disposed = false;
         }
 
         public void Dispose()
@@ -195,10 +194,6 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
             catch (ObjectDisposedException)
             {
                 // Semaphore was already disposed, ignore
-            }
-            catch (SemaphoreFullException)
-            {
-                // Release called more times than Wait, ignore
             }
         }
     }
