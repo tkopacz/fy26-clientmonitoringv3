@@ -170,15 +170,24 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// </summary>
     private struct LockReleaser : IDisposable
     {
-        private SemaphoreSlim _semaphore;
+        private readonly SemaphoreSlim _semaphore;
+        private bool _disposed;
 
         public LockReleaser(SemaphoreSlim semaphore)
         {
             _semaphore = semaphore ?? throw new ArgumentNullException(nameof(semaphore));
+            _disposed = false;
         }
 
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+
             try
             {
                 _semaphore.Release();
