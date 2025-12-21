@@ -86,6 +86,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
             
             // Append to file
             await _currentWriter!.WriteLineAsync(json);
+            await _currentWriter.FlushAsync(cancellationToken);
             // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
             _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
 
