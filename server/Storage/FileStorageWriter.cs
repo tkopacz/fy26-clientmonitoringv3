@@ -170,7 +170,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// </summary>
     private struct LockReleaser : IDisposable
     {
-        private readonly SemaphoreSlim _semaphore;
+        private SemaphoreSlim _semaphore;
 
         public LockReleaser(SemaphoreSlim semaphore)
         {
