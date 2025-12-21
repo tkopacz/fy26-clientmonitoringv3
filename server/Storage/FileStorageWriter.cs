@@ -116,7 +116,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         {
             if (_currentWriter != null)
             {
-                await _currentWriter.FlushAsync();
+                await _currentWriter.FlushAsync(cancellationToken);
                 _logger.LogDebug("Flushed storage to {FilePath}", _currentFilePath);
             }
         }
@@ -168,7 +168,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// <summary>
     /// Helper struct to release the semaphore when disposed.
     /// </summary>
-    private readonly struct LockReleaser : IDisposable
+    private struct LockReleaser : IDisposable
     {
         private readonly SemaphoreSlim _semaphore;
 
