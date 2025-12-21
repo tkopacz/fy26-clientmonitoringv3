@@ -116,39 +116,32 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
                 
                 // Append to file
                 await _currentWriter!.WriteLineAsync(json);
-                await _currentWriter.FlushAsync(cancellationToken);
-                // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
-                _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
+                // Update in-memory size estimate based on encoding, without forcing a flush.
+                // Writer uses UTF-8, so this correctly accounts for multi-byte characters.
+                _currentFileSize += _currentWriter.Encoding.GetByteCount(json) + _newlineByteCount;
 
-            // Update in-memory size estimate based on encoding, without forcing a flush.
-            var encoding = _currentWriter.Encoding;
-            var bytesForLine = encoding.GetByteCount(json) + _newlineByteCount;
-            _currentFileSize += bytesForLine;
-            _logger.LogDebug(
-                "Appended record from agent {AgentId} to {FilePath}",
-                record.AgentInstanceId,
-                _currentFilePath);
+                _logger.LogDebug(
+                    "Appended record from agent {AgentId} to {FilePath}",
+                    record.AgentInstanceId,
+                    _currentFilePath);
 
-            // Update success metrics
-            System.Threading.Interlocked.Increment(ref _successfulAppendCount);
-            _appendSuccessCounter.Add(1);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to append record from agent {AgentId}",
-                record.AgentInstanceId);
+                // Update success metrics
+                Interlocked.Increment(ref _successfulAppendCount);
+                _appendSuccessCounter.Add(1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to append record from agent {AgentId}",
+                    record.AgentInstanceId);
 
-            // Update failure metrics
-            System.Threading.Interlocked.Increment(ref _failedAppendCount);
-            _appendFailureCounter.Add(1);
+                // Update failure metrics
+                Interlocked.Increment(ref _failedAppendCount);
+                _appendFailureCounter.Add(1);
 
-            // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
-        }
-        finally
-        {
-            _writeLock.Release();
+                // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
+            }
         }
     }
 
@@ -222,6 +215,9 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
             _writeLock.Release();
         }
         _writeLock.Dispose();
+
+    }
+
     /// <summary>
     /// Acquire the write lock asynchronously and return a disposable that releases it.
     /// </summary>
