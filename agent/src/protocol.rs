@@ -263,7 +263,7 @@ pub const TARGET_FRAME_SIZE: usize = 64 * 1024;
 
 /// Wire format framing and encoding.
 ///
-/// Framing: [4-byte length][message bytes]
+/// Framing: [length: u32 big-endian][message bytes]
 /// Message bytes: bincode-encoded Message, optionally zstd-compressed
 pub struct FrameCodec;
 

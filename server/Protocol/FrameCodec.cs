@@ -156,8 +156,8 @@ public static class FrameCodec
     /// <summary>
     /// Serialize message to bytes (bincode-compatible format).
     /// 
-    /// This is a simplified implementation matching Rust bincode's wire format.
-    /// Production code would use a proper bincode library or shared schema.
+    /// Implements the subset of Rust bincode's wire format used by the agents.
+    /// If the Rust-side bincode schema or encoding changes, this method must be kept in sync.
     /// </summary>
     private static byte[] SerializeMessage(Message message)
     {

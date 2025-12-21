@@ -165,11 +165,10 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         try
         {
             _currentWriter?.Dispose();
-            _writeLock.Dispose();
         }
         finally
         {
-            // Lock already disposed
+            _writeLock.Dispose();
         }
     }
 }

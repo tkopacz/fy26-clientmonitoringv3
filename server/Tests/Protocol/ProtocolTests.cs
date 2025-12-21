@@ -324,11 +324,8 @@ public class ProtocolTests
         // Verify the message structure
         Assert.NotNull(message);
         
-        // Message type should be Snapshot (4) - debug info
-        if (message.Envelope.MessageType != MessageType.Snapshot)
-        {
-            throw new XunitException($"Expected Snapshot, but got {message.Envelope.MessageType} (this indicates the file was overwritten by another test)");
-        }
+        // Message type should be Snapshot (4)
+        Assert.Equal(MessageType.Snapshot, message.Envelope.MessageType);
 
         // Verify payload is a snapshot
         var snapshot = Assert.IsType<MessagePayload.Snapshot>(message.Payload);
