@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: Monitoring Protocol Ingest API
+  version: 1.0.0
+  description: |
+    Binary frame ingest surface used for interoperability testing and diagnostics.
+    Frames are length-prefixed and include an explicit message type discriminant (1–7).
+servers:
+  - url: https://localhost:8443
+paths:
+  /ingest/frame:
+    post:
+      summary: Accept a binary protocol frame
+      operationId: postFrame
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+            description: Length-prefixed frame with message_type discriminant 1–7 and payload encoded per schema.
+      responses:
+        '204':
+          description: Frame accepted
+        '400':
+          description: Invalid frame (length mismatch, unknown discriminant)
+        '429':
+          description: Backpressure active; sender should throttle
+components:
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
+        messageType:
+          type: integer
+          format: int32
+          description: 1=Handshake, 2=HandshakeAck, 3=Snapshot, 4=Heartbeat, 5=Backpressure, 6=Ack, 7=Error
+        length:
+          type: integer
+          format: int32
+        timestampUtc:
+          type: integer
+          format: int64
+        agentId:
+          type: string
+        platform:
+          type: string
+          enum: [windows, linux]
+        capabilities:
+          type: object
+          properties:
+            supportsCompression:
+              type: boolean
+            supportsAllProcesses:
+              type: boolean
+    Snapshot:
+      type: object
+      properties:
+        windowStart:
+          type: integer
+          format: int64
+        windowEnd:
+          type: integer
+          format: int64
+        cpuTotalPct:
+          type: number
+          format: float
+        memUsedBytes:
+          type: integer
+          format: int64
+        memTotalBytes:
+          type: integer
+          format: int64
+        truncated:
+          type: boolean
+        compressionApplied:
+          type: boolean
+        processes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProcessSample'
+    ProcessSample:
+      type: object
+      properties:
+        pid:
+          type: integer
+          format: int32
+        name:
+          type: string
+        cpuPct:
+          type: number
+          format: float
+        memPct:
+          type: number
+          format: float
+        rssBytes:
+          type: integer
+          format: int64
+        cmdline:
+          type: string
+        rank:
+          type: integer
+          format: int32

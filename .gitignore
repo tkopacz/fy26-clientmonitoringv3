@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Rust/Cargo build artifacts
+target/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -416,3 +419,4 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
