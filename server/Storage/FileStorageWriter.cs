@@ -36,7 +36,7 @@ public sealed class FileStorageConfig
 /// Each record is written as a single-line JSON object.
 /// Thread-safe with locking for concurrent append operations.
 /// </summary>
-public sealed class FileStorageWriter : IStorageWriter, IDisposable
+public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDisposable
 {
     private readonly FileStorageConfig _config;
     private readonly ILogger<FileStorageWriter> _logger;
@@ -47,6 +47,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
 
     // Cached newline byte count for the writer encoding to avoid repeated computation per append
     private readonly int _newlineByteCount;
+    private int _disposed = 0; // 0 = not disposed, 1 = disposed
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -100,20 +101,24 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         StorageRecord record,
         CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireLockAsync(cancellationToken))
         {
-            // Rotate file if needed
-            if (_currentWriter == null || _currentFileSize >= _config.MaxFileSizeBytes)
+            try
             {
-                await RotateFileAsync();
-            }
+                // Rotate file if needed
+                if (_currentWriter == null || _currentFileSize >= _config.MaxFileSizeBytes)
+                {
+                    await RotateFileAsync();
+                }
 
-            // Serialize record to JSON (single line)
-            var json = JsonSerializer.Serialize(record, _jsonOptions);
-            
-            // Append to file
-            await _currentWriter!.WriteLineAsync(json);
+                // Serialize record to JSON (single line)
+                var json = JsonSerializer.Serialize(record, _jsonOptions);
+                
+                // Append to file
+                await _currentWriter!.WriteLineAsync(json);
+                await _currentWriter.FlushAsync(cancellationToken);
+                // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
+                _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
 
             // Update in-memory size estimate based on encoding, without forcing a flush.
             var encoding = _currentWriter.Encoding;
@@ -152,18 +157,13 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// </summary>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireLockAsync(cancellationToken))
         {
             if (_currentWriter != null)
             {
-                await _currentWriter.FlushAsync();
+                await _currentWriter.FlushAsync(cancellationToken);
                 _logger.LogDebug("Flushed storage to {FilePath}", _currentFilePath);
             }
-        }
-        finally
-        {
-            _writeLock.Release();
         }
     }
 
@@ -201,16 +201,91 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         _logger.LogInformation("Created new storage file: {FilePath}", _currentFilePath);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _writeLock.Wait();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
+        await _writeLock.WaitAsync();
         try
         {
-            _currentWriter?.Dispose();
+            if (_currentWriter != null)
+            {
+                await _currentWriter.DisposeAsync();
+                _currentWriter = null;
+            }
         }
         finally
         {
-            _writeLock.Dispose();
+            _writeLock.Release();
         }
+        _writeLock.Dispose();
+    /// <summary>
+    /// Acquire the write lock asynchronously and return a disposable that releases it.
+    /// </summary>
+    private async Task<IDisposable> AcquireLockAsync(CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        return new LockReleaser(_writeLock);
+    }
+
+    /// <summary>
+    /// Helper struct to release the semaphore when disposed.
+    /// </summary>
+    private struct LockReleaser : IDisposable
+    {
+        private readonly SemaphoreSlim _semaphore;
+        private bool _disposed;
+
+        public LockReleaser(SemaphoreSlim semaphore)
+        {
+            _semaphore = semaphore ?? throw new ArgumentNullException(nameof(semaphore));
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+
+            try
+            {
+                _semaphore.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Semaphore was already disposed, ignore
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
+        // Use synchronous disposal - safe for synchronous contexts
+        // For async contexts, prefer DisposeAsync()
+        _writeLock.Wait();
+        try
+        {
+            if (_currentWriter != null)
+            {
+                _currentWriter.Dispose();
+                _currentWriter = null;
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+        _writeLock.Dispose();
     }
 }
