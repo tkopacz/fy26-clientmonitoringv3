@@ -10,6 +10,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
 
 namespace MonitoringServer.Storage;
@@ -44,11 +45,27 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     private string? _currentFilePath;
     private long _currentFileSize;
 
+    // Cached newline byte count for the writer encoding to avoid repeated computation per append
+    private readonly int _newlineByteCount;
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    // Metrics: expose counters for monitoring append success/failure
+    private static readonly Meter s_meter = new("MonitoringServer.Storage.FileStorageWriter");
+    private readonly Counter<long> _appendSuccessCounter;
+    private readonly Counter<long> _appendFailureCounter;
+
+    // In-memory thread-safe counters for quick inspection/testing
+    private long _successfulAppendCount;
+    private long _failedAppendCount;
+
+    // Public read-only accessors
+    public long SuccessfulAppendCount => System.Threading.Volatile.Read(ref _successfulAppendCount);
+    public long FailedAppendCount => System.Threading.Volatile.Read(ref _failedAppendCount);
 
     public FileStorageWriter(
         FileStorageConfig config,
@@ -57,8 +74,19 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+        // Initialize metrics
+        _appendSuccessCounter = s_meter.CreateCounter<long>(
+            "file_storage_append_success",
+            description: "Number of successful append operations");
+        _appendFailureCounter = s_meter.CreateCounter<long>(
+            "file_storage_append_failure",
+            description: "Number of failed append operations");
+
         // Ensure base directory exists
         Directory.CreateDirectory(_config.BaseDirectory);
+
+        // Cache newline byte count for the chosen encoding (UTF-8)
+        _newlineByteCount = Encoding.UTF8.GetByteCount(Environment.NewLine);
     }
 
     /// <summary>
@@ -86,13 +114,19 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
             
             // Append to file
             await _currentWriter!.WriteLineAsync(json);
-            // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
-            _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
 
+            // Update in-memory size estimate based on encoding, without forcing a flush.
+            var encoding = _currentWriter.Encoding;
+            var bytesForLine = encoding.GetByteCount(json) + _newlineByteCount;
+            _currentFileSize += bytesForLine;
             _logger.LogDebug(
                 "Appended record from agent {AgentId} to {FilePath}",
                 record.AgentInstanceId,
                 _currentFilePath);
+
+            // Update success metrics
+            System.Threading.Interlocked.Increment(ref _successfulAppendCount);
+            _appendSuccessCounter.Add(1);
         }
         catch (Exception ex)
         {
@@ -100,6 +134,11 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
                 ex,
                 "Failed to append record from agent {AgentId}",
                 record.AgentInstanceId);
+
+            // Update failure metrics
+            System.Threading.Interlocked.Increment(ref _failedAppendCount);
+            _appendFailureCounter.Add(1);
+
             // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
         }
         finally

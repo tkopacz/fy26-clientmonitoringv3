@@ -300,8 +300,11 @@ fn encode_decode_with_compression() {
     // Verify it's compressed by checking it's smaller than uncompressed version
     let message_uncompressed = Message {
         envelope: Envelope {
+            version: message.envelope.version,
+            message_type: message.envelope.message_type,
+            message_id: message.envelope.message_id,
+            timestamp_secs: message.envelope.timestamp_secs,
             compressed: false,
-            ..message.envelope.clone()
         },
         payload: message.payload.clone(),
     };
@@ -443,16 +446,25 @@ fn cross_language_serialization_snapshot() {
     // Write to file for cross-language testing
     use std::fs;
     use std::path::PathBuf;
-    
-    let test_data_dir = PathBuf::from("../server/Tests/data");
+    use std::env;
+
+    let test_data_dir = env::var("CROSS_LANG_TEST_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            // Fall back to workspace-relative default: <workspace>/server/Tests/data
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("server")
+                .join("Tests")
+                .join("data")
+        });
     if !test_data_dir.exists() {
         fs::create_dir_all(&test_data_dir).ok();
     }
-    
+
     let file_path = test_data_dir.join("cross-language-snapshot.bin");
     fs::write(&file_path, &encoded)
         .expect("Failed to write test data file");
-    
     // Verify file was written
     let written = fs::read(&file_path).expect("Failed to read back test data");
     assert_eq!(written, encoded, "Written file should match encoded data");

@@ -284,9 +284,11 @@ impl FrameCodec {
     pub fn encode(message: &Message) -> Result<Vec<u8>, ProtocolError> {
         let mut body = Vec::with_capacity(128);
 
-        // Envelope header: multi-byte fields (message_id, timestamp_secs) are encoded in little-endian;
-        // single-byte fields (version bytes, message type, compressed flag) have no endianness. The .NET
-        // FrameCodec must read/write the same layout.
+        // Envelope header layout: multi-byte envelope fields (message_id, timestamp_secs) are encoded in
+        // little-endian; single-byte fields (version bytes, message type, compressed flag) have no
+        // endianness. The 4-byte frame length prefix is big-endian (see encode docs), while the envelope
+        // and payload multi-byte fields are little-endian. The .NET FrameCodec must read/write the same
+        // layout.
         body.push(message.envelope.version.major);
         body.push(message.envelope.version.minor);
         body.push(message.envelope.message_type.to_u8());

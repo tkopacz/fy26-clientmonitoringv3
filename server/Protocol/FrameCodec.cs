@@ -17,7 +17,10 @@ namespace MonitoringServer.Protocol;
 /// </summary>
 public static class FrameCodec
 {
-    /// <summary>Maximum uncompressed frame size (256 KB safeguard)</summary>
+    /// <summary>
+    /// Maximum uncompressed frame size (256 KB safeguard).
+    /// Must be kept in sync with Rust MAX_FRAME_SIZE in agent/src/protocol.rs (line 264).
+    /// </summary>
     public const int MaxFrameSize = 256 * 1024;
 
     /// <summary>Target compressed frame size (64 KB)</summary>
@@ -159,6 +162,8 @@ public static class FrameCodec
     /// Implements the subset of the Rust agent's bincode wire format that this server relies on.
     /// When modifying this method, ensure the produced wire format remains compatible with the
     /// corresponding Rust implementation (see agent/src/protocol.rs).
+    /// For details on keeping MessageType discriminants synchronized with the Rust definition, see
+    /// the documentation on the MessageType enum (in Messages.cs) and agent/src/protocol.rs.
     /// </summary>
     private static byte[] SerializeMessage(Message message)
     {

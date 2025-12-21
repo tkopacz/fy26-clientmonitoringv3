@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            cat "$0"
+            sed -n '2,11p' "$0"
             exit 0
             ;;
         *)
@@ -61,8 +61,8 @@ echo ""
 
 # Run .NET tests
 echo -e "${YELLOW}[2/2] Running .NET server tests...${NC}"
-if cd "$SCRIPT_DIR/server" && dotnet test Tests/MonitoringServer.Tests.csproj \
-    $(if [ "$VERBOSE" = false ]; then echo "--verbosity minimal"; else echo "--verbosity normal"; fi); then
+if ( cd "$SCRIPT_DIR/server" && dotnet test Tests/MonitoringServer.Tests.csproj \
+    $(if [ "$VERBOSE" = false ]; then echo "--verbosity minimal"; else echo "--verbosity normal"; fi) ); then
     echo -e "${GREEN}✓ .NET tests passed${NC}"
 else
     echo -e "${RED}✗ .NET tests failed${NC}"
