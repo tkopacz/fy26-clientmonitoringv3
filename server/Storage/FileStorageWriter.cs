@@ -43,6 +43,7 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
     private StreamWriter? _currentWriter;
     private string? _currentFilePath;
     private long _currentFileSize;
+    private int _disposed = 0; // 0 = not disposed, 1 = disposed
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -165,6 +166,11 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
         await _writeLock.WaitAsync();
         try
         {
@@ -183,6 +189,11 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
         // Use synchronous disposal - safe for synchronous contexts
         // For async contexts, prefer DisposeAsync()
         _writeLock.Wait();
