@@ -35,7 +35,7 @@ public sealed class FileStorageConfig
 /// Each record is written as a single-line JSON object.
 /// Thread-safe with locking for concurrent append operations.
 /// </summary>
-public sealed class FileStorageWriter : IStorageWriter, IDisposable
+public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDisposable
 {
     private readonly FileStorageConfig _config;
     private readonly ILogger<FileStorageWriter> _logger;
@@ -43,6 +43,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     private StreamWriter? _currentWriter;
     private string? _currentFilePath;
     private long _currentFileSize;
+    private int _disposed = 0; // 0 = not disposed, 1 = disposed
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -156,6 +157,27 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
         _logger.LogInformation("Created new storage file: {FilePath}", _currentFilePath);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
+        await _writeLock.WaitAsync();
+        try
+        {
+            if (_currentWriter != null)
+            {
+                await _currentWriter.DisposeAsync();
+                _currentWriter = null;
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+        _writeLock.Dispose();
     /// <summary>
     /// Acquire the write lock asynchronously and return a disposable that releases it.
     /// </summary>
@@ -200,14 +222,26 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return; // Already disposed
+        }
+
+        // Use synchronous disposal - safe for synchronous contexts
+        // For async contexts, prefer DisposeAsync()
         _writeLock.Wait();
         try
         {
-            _currentWriter?.Dispose();
+            if (_currentWriter != null)
+            {
+                _currentWriter.Dispose();
+                _currentWriter = null;
+            }
         }
         finally
         {
-            _writeLock.Dispose();
+            _writeLock.Release();
         }
+        _writeLock.Dispose();
     }
 }
