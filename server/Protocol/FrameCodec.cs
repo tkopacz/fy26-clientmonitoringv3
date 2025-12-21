@@ -264,7 +264,7 @@ public static class FrameCodec
                 writer.Write(snapshot.Payload.WindowEndSecs);
                 writer.Write(snapshot.Payload.TotalCpuPercent);
                 writer.Write(snapshot.Payload.TotalMemoryBytes);
-                writer.Write(snapshot.Payload.Processes.Count);
+                writer.Write((ulong)snapshot.Payload.Processes.Count);
                 foreach (var process in snapshot.Payload.Processes)
                 {
                     writer.Write(process.Pid);
