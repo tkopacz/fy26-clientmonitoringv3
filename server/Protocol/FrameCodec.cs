@@ -156,8 +156,9 @@ public static class FrameCodec
     /// <summary>
     /// Serialize message to bytes (bincode-compatible format).
     /// 
-    /// Implements the subset of Rust bincode's wire format used by the agents.
-    /// If the Rust-side bincode schema or encoding changes, this method must be kept in sync.
+    /// Implements the subset of the Rust agent's bincode wire format that this server relies on.
+    /// When modifying this method, ensure the produced wire format remains compatible with the
+    /// corresponding Rust implementation (see agent/src/protocol.rs).
     /// </summary>
     private static byte[] SerializeMessage(Message message)
     {
@@ -258,7 +259,7 @@ public static class FrameCodec
                 writer.Write(snapshot.Payload.WindowEndSecs);
                 writer.Write(snapshot.Payload.TotalCpuPercent);
                 writer.Write(snapshot.Payload.TotalMemoryBytes);
-                writer.Write((ulong)snapshot.Payload.Processes.Count);
+                writer.Write(snapshot.Payload.Processes.Count);
                 foreach (var process in snapshot.Payload.Processes)
                 {
                     writer.Write(process.Pid);

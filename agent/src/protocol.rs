@@ -255,7 +255,12 @@ impl From<bincode::Error> for ProtocolError {
     }
 }
 
-/// Maximum uncompressed frame size (256 KB safeguard)
+/// Maximum uncompressed frame size (256 KB safeguard).
+///
+/// IMPORTANT: This value must be kept in sync with the corresponding
+/// `FrameCodec.MaxFrameSize` constant in the C# implementation.
+/// If you change this limit here, update the C# value as well to avoid
+/// protocol incompatibilities between agent and server.
 const MAX_FRAME_SIZE: usize = 256 * 1024;
 
 /// Target compressed frame size (64 KB)
@@ -279,7 +284,9 @@ impl FrameCodec {
     pub fn encode(message: &Message) -> Result<Vec<u8>, ProtocolError> {
         let mut body = Vec::with_capacity(128);
 
-        // Envelope (little-endian to align with .NET BinaryWriter)
+        // Envelope header: multi-byte fields (message_id, timestamp_secs) are encoded in little-endian;
+        // single-byte fields (version bytes, message type, compressed flag) have no endianness. The .NET
+        // FrameCodec must read/write the same layout.
         body.push(message.envelope.version.major);
         body.push(message.envelope.version.minor);
         body.push(message.envelope.message_type.to_u8());

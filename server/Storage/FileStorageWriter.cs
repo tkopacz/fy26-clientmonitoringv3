@@ -9,6 +9,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace MonitoringServer.Storage;
@@ -65,6 +66,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
     /// 
     /// Automatically rotates to a new file if size threshold is exceeded.
     /// Thread-safe with internal locking.
+    /// Best-effort with at-most-once semantics: append errors are logged and suppressed (no retries).
     /// </summary>
     public async Task AppendAsync(
         StorageRecord record,
@@ -84,7 +86,8 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
             
             // Append to file
             await _currentWriter!.WriteLineAsync(json);
-            _currentFileSize += json.Length + Environment.NewLine.Length;
+            // Track actual bytes written (UTF-8) for accurate rotation with multi-byte chars.
+            _currentFileSize += Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(_currentWriter.NewLine);
 
             _logger.LogDebug(
                 "Appended record from agent {AgentId} to {FilePath}",
@@ -97,7 +100,7 @@ public sealed class FileStorageWriter : IStorageWriter, IDisposable
                 ex,
                 "Failed to append record from agent {AgentId}",
                 record.AgentInstanceId);
-            // At-most-once semantics: log error but don't throw
+            // Suppress the error to preserve at-most-once semantics; callers should rely on diagnostics/logs.
         }
         finally
         {
