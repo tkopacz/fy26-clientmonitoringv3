@@ -176,8 +176,9 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
         }
         finally
         {
-            _writeLock.Dispose();
+            _writeLock.Release();
         }
+        _writeLock.Dispose();
     }
 
     public void Dispose()
@@ -195,7 +196,8 @@ public sealed class FileStorageWriter : IStorageWriter, IAsyncDisposable, IDispo
         }
         finally
         {
-            _writeLock.Dispose();
+            _writeLock.Release();
         }
+        _writeLock.Dispose();
     }
 }
