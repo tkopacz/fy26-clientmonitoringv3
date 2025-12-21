@@ -28,7 +28,7 @@ and Linux. It MUST minimize CPU and memory usage through efficient
 sampling, zero-copy where practical, preallocated buffers, and avoiding
 blocking I/O on critical paths. Collection scope includes CPU usage,
 memory usage, and top processes by CPU and memory, with an option to
-report all processes when requested.
+report all processes when requested. Do not build client for macOS.
 
 Rationale: Rust enables predictable performance and low overhead across
 platforms; careful resource discipline keeps the agent unobtrusive.
