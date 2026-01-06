@@ -5,6 +5,16 @@
 **Status**: Draft  
 **Input**: User description: "build specification for protocol and implement key components for rust and .net to send and receive messages"
 
+## Clarifications
+
+### Session 2026-01-06
+
+- Q: Which delivery semantics should the protocol guarantee for snapshot messages? → A: At-least-once (agent retries until ack; server de-dupes by messageId).
+- Q: When agent and server support different protocol versions, what should the handshake do? → A: Negotiate to the highest mutually supported version and proceed.
+- Q: When an all-process snapshot is still oversized after negotiated zstd compression, what should happen? → A: Segment into multiple parts with the same snapshotId; server reassembles.
+- Q: What form should backpressure signaling take? → A: Throttle level (numeric delay/level; agent adjusts send interval).
+- Q: For segmented snapshots, how should acks work? → A: Ack each part/frame (each part has its own messageId); persist once after full reassembly.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ingest binary snapshots end-to-end (Priority: P1)
@@ -105,8 +115,11 @@ increments error counters, and both remain alive.
   platform, timestamps), and payload schemas for handshake, heartbeat,
   snapshot, error, and backpressure signals.
 - **FR-003**: The protocol MUST support backward-compatible evolution
-  via optional fields and version negotiation; unknown optional fields
-  MUST be safely ignored or recorded without failing the session.
+  via optional fields and version negotiation; during handshake, agent
+  and server MUST negotiate the highest mutually supported protocol
+  version and proceed, and if no overlap exists the handshake MUST fail
+  with an explicit error; unknown optional fields MUST be safely ignored
+  or recorded without failing the session.
 - **FR-004**: Handshake MUST include agent identity (instance id, OS
   type, agent version), protocol version, and capabilities (supports
   all-process option, compression if allowed) and receive server ack
@@ -114,22 +127,32 @@ increments error counters, and both remain alive.
 - **FR-005**: Snapshots MUST include sampling window start/end,
   aggregated CPU/memory, and per-process entries (pid, name, cpu%, mem%/
   rss, optional command line when permitted by platform); ordering or
-  truncation rules MUST be defined when payload exceeds size targets.
+  truncation/segmentation rules MUST be defined when payload exceeds
+  size targets.
+- **FR-006**: Transport sessions MUST include keepalive/heartbeat and
 - **FR-006**: Transport sessions MUST include keepalive/heartbeat and
   backpressure signaling so the server can slow senders without
-  disconnects.
-- **FR-007**: Reliability semantics MUST implement at-most-once
-  delivery: snapshot messages include ids for correlation, are not
-  retried after a nack or timeout, and errors are surfaced via metrics
-  and logs.
+  disconnects; backpressure MUST be expressed as a throttle level (e.g.,
+  numeric delay/level) that the agent applies to its snapshot send rate.
+- **FR-007**: Reliability semantics MUST implement at-least-once
+  delivery for snapshots: snapshot messages include unique message ids
+  for correlation and de-duplication; the agent MUST retry on timeout or
+  disconnect until an ack is received, and the server MUST de-dupe by
+  message id so storage does not double-count; errors are surfaced via
+  metrics and logs.
 - **FR-008**: Transport MAY run plaintext for local/dev use only, with a
   configuration switch to enable TLS/mTLS in future iterations; default
   posture must document risks and prohibit plaintext in production
   deployments.
 - **FR-009**: Payload size safeguards MUST apply zstd compression
-  (level 3) when negotiated via capability flag, then truncate to top-N
-  processes to fit within the 64 KB target; truncation rules must be
-  deterministic and signaled in metadata when applied.
+  (level 3) when negotiated via capability flag; if an all-process
+  snapshot still exceeds size targets after compression, it MUST be
+  segmented into multiple snapshot parts that share a common snapshotId
+  and include part index/part count so the server can reassemble; each
+  snapshot part MUST carry its own messageId and be acked individually,
+  and the server MUST persist the snapshot only once after successful
+  full reassembly; any truncation rules (if used) must be deterministic
+  and signaled in metadata when applied.
 - **FR-010**: The server MUST decode, validate, and route messages
   through an ingestion pipeline that applies backpressure, batching, and
   validation before invoking the storage interface.
@@ -154,9 +177,12 @@ increments error counters, and both remain alive.
   process samples (pid, name, cpu%, mem%/rss, optional cmdline, ordering
   by cpu%).
 - **BackpressureSignal**: Server-to-agent message indicating throttle
-  level or pause/resume instructions.
+- **BackpressureSignal**: Server-to-agent message indicating a throttle
+  level (numeric delay/level) the agent applies to its send rate.
 - **Ack/Nack**: Correlates to message ids; carries status and optional
-  error code.
+- **Ack/Nack**: Correlates to message ids; carries status and optional
+  error code (for segmented snapshots, each part is acked by its own
+  messageId).
 - **StorageRecord**: Canonical decoded record persisted through the
   storage interface; independent of storage medium.
 
