@@ -27,7 +27,7 @@ paths:
         '204':
           description: Frame accepted
         '400':
-          description: Invalid frame (length mismatch, unknown discriminant)
+          description: Invalid frame (length mismatch, checksum failure, unknown discriminant)
         '429':
           description: Backpressure active; sender should throttle
 components:
@@ -48,9 +48,9 @@ components:
           format: int32
           description: 1=Handshake, 2=HandshakeAck, 3=Heartbeat, 4=Snapshot, 5=Ack, 6=Backpressure, 7=Error
         messageId:
-          type: integer
-          format: int64
-          description: Unique per frame/part; used for acking and server de-duplication.
+          type: string
+          format: uuid
+          description: Unique per frame/part; used for acking and server de-duplication. On-wire the binary protocol encodes this as 16 raw bytes.
         timestampUtc:
           type: integer
           format: int64
@@ -70,9 +70,9 @@ components:
       type: object
       properties:
         snapshotId:
-          type: integer
-          format: int64
-          description: Common id across segmented snapshot parts.
+          type: string
+          format: uuid
+          description: Common id across segmented snapshot parts. On-wire the binary protocol encodes this as 16 raw bytes.
         partIndex:
           type: integer
           format: int32

@@ -3,9 +3,9 @@
 ## Entities
 
 ### ProtocolEnvelope
-- Fields: `version_major` (u8), `version_minor` (u8), `message_type` (u8 discriminant 1–7), `timestamp_utc` (i64), `agent_id` (string/uuid), `platform` (enum: windows, linux), `capabilities` (bit flags: compression, all_processes).
+- Fields: `version_major` (u8), `version_minor` (u8), `message_type` (u8 discriminant 1–7), `message_id` (opaque 16 bytes), `timestamp_utc` (i64, UTC Unix milliseconds; per-message send time), `agent_id` (string/uuid), `platform` (enum: windows, linux), `capabilities` (bit flags: compression, all_processes).
 - Relationships: Wraps one payload (Handshake, Snapshot, Heartbeat, Backpressure, Ack, Error).
-- Validation: Frame length prefix matches bytes read; message_type within known range.
+- Validation: Frame length prefix matches bytes read; CRC32 checksum validates; message_type within known range.
 
 ### Handshake
 - Fields: `min_version_major` (u8), `min_version_minor` (u8), `max_version_major` (u8), `max_version_minor` (u8), `agent_version` (string), `agent_id` (string/uuid), `os` (enum), `supports_all_processes` (bool), `supports_compression` (bool), `timestamp_utc` (i64).
@@ -17,7 +17,7 @@
 - Validation: chosen_version within the overlap of agent/server supported ranges.
 
 ### Snapshot
-- Fields: `snapshot_id` (u64 or uuid), `window_start` (i64), `window_end` (i64), `cpu_total_pct` (f32), `mem_used_bytes` (u64), `mem_total_bytes` (u64), `processes` (list of ProcessSample).
+- Fields: `snapshot_id` (opaque 16 bytes), `window_start` (i64), `window_end` (i64), `cpu_total_pct` (f32), `mem_used_bytes` (u64), `mem_total_bytes` (u64), `processes` (list of ProcessSample).
 - Segmentation fields (only when snapshot is segmented): `part_index` (u16, 0-based), `part_count` (u16, total parts).
 - Relationships: Contains many ProcessSample entries.
 - Validation: window_end >= window_start; process count > 0; totals consistent.
@@ -36,7 +36,7 @@
 - Validation: throttle_delay_ms within a configured range; reason optional text length cap (e.g., 256 chars).
 
 ### Ack
-- Fields: `message_id` (u64), `status` (enum: ok|error), `error_code` (optional string), `timestamp_utc` (i64).
+- Fields: `message_id` (opaque 16 bytes), `status` (enum: ok|error), `error_code` (optional string), `timestamp_utc` (i64).
 - Validation: message_id present; status known.
 
 ### ErrorFrame

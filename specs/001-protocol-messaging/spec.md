@@ -86,9 +86,9 @@ increments error counters, and both remain alive.
 **Acceptance Scenarios**:
 
 1. **Given** the server receives a corrupted frame, **When** checksum or
-   length validation fails, **Then** the server rejects that frame,
-   emits a protocol error message, and keeps the connection alive if
-   safe to do so.
+  length validation fails, **Then** the server rejects that frame,
+  emits a protocol error message, and keeps the connection alive if
+  safe to do so.
 2. **Given** the agent detects repeated backpressure signals, **When**
    threshold is met, **Then** the agent reduces send rate while still
    delivering periodic heartbeats to prove liveness.
@@ -113,10 +113,21 @@ increments error counters, and both remain alive.
 - **FR-001**: The agent MUST collect CPU usage, memory usage, and top-N
   processes by CPU and memory with an option to send all processes on
   request; macOS agents are out of scope.
+  - Default: `topN = 100` unless configured otherwise.
 - **FR-002**: A versioned binary protocol MUST define framing (length
   prefix and message type), envelope metadata (protocol version,
   platform, timestamps), and payload schemas for handshake, heartbeat,
   snapshot, error, and backpressure signals.
+  - Framing MUST be: a 4-byte unsigned little-endian length prefix (bytes
+    following the prefix), followed by a 4-byte unsigned little-endian
+    CRC32 checksum of the remaining frame bytes (everything after the
+    checksum), followed by the encoded envelope + payload.
+  - The checksum algorithm MUST be CRC-32/ISO-HDLC (aka “standard CRC32”):
+    polynomial 0x04C11DB7, init 0xFFFFFFFF, refin=true, refout=true,
+    xorout 0xFFFFFFFF.
+  - Checksum validation MUST occur before envelope/payload decoding.
+  - Envelope timestamps MUST represent per-message send time as UTC Unix
+    milliseconds.
 - **FR-003**: The protocol MUST support backward-compatible evolution
   via optional fields and version negotiation; during handshake, agent
   and server MUST negotiate the highest mutually supported protocol
@@ -134,6 +145,8 @@ increments error counters, and both remain alive.
   entries (pid, name, cpu%, mem%/rss, optional command line when
   permitted by platform); ordering or truncation/segmentation rules MUST
   be defined when payload exceeds size targets.
+  - Process ordering MUST be deterministic. When truncating to top-N,
+    sort by `cpu%` descending, then by `pid` ascending as a tie-break.
 - **FR-006**: Transport sessions MUST include keepalive/heartbeat and
   backpressure signaling so the server can slow senders without
   disconnects; backpressure MUST be expressed as `throttleDelayMs`
@@ -148,6 +161,8 @@ increments error counters, and both remain alive.
   disconnect until an ack is received, and the server MUST de-dupe by
   message id so storage does not double-count; errors are surfaced via
   metrics and logs.
+  - `messageId` and `snapshotId` MUST be opaque 16-byte identifiers. On
+    wire they are encoded as exactly 16 bytes (not strings, not varints).
   - Retry policy MUST be deterministic and configurable: `ackTimeoutMs`
     default 2000ms; exponential backoff starting at 500ms up to 30000ms;
     no jitter (tests must be deterministic).
@@ -199,7 +214,9 @@ increments error counters, and both remain alive.
 ### Key Entities *(include if feature involves data)*
 
 - **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
-  message type, and envelope metadata (timestamps, platform, agent id).
+- **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
+  message type, message id, and envelope metadata (per-message send time
+  `timestampUtc` as UTC Unix milliseconds, platform, agent id).
 - **AgentIdentity**: Agent instance id, OS type, agent version,
   capability flags (all-process allowed, compression if any).
 - **SnapshotPayload**: Sampling window, aggregate CPU/memory, list of

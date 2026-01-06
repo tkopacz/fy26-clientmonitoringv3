@@ -24,8 +24,8 @@ description: "Task list for Binary Protocol & IO Core"
 
 **⚠️ CRITICAL**: No user story work should begin until this phase is complete.
 
-- [ ] T004 Define envelope metadata fields (agent id, platform) in agent/src/protocol.rs and server/Protocol/Messages.cs
-- [ ] T005 Update framing serialization/deserialization to include new envelope fields in agent/src/protocol.rs and server/Protocol/FrameCodec.cs
+- [ ] T004 Define envelope metadata fields (agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs
+- [ ] T005 Update framing serialization/deserialization to include length prefix + CRC32 checksum validation and the updated envelope fields in agent/src/protocol.rs and server/Protocol/FrameCodec.cs
 - [ ] T006 [P] Update Rust protocol unit tests for envelope field round-trips in agent/tests/protocol_tests.rs
 - [ ] T007 [P] Update .NET protocol unit tests for envelope field round-trips in server/Tests/Protocol/ProtocolTests.cs
 - [ ] T008 Align SnapshotPayload schema to spec (memUsed + memTotal + window + aggregates) in agent/src/protocol.rs and server/Protocol/Messages.cs
@@ -78,12 +78,12 @@ description: "Task list for Binary Protocol & IO Core"
 - [ ] T039 [US1] Implement server messageId de-duplication (per-connection) in server/Protocol/SessionHandler.cs
 - [ ] T040 [US1] Implement server snapshot reassembly buffer keyed by snapshotId and persist only after full reassembly in server/Protocol/SessionHandler.cs
 - [ ] T041 [US1] Implement ack-per-part behavior and nack/error responses on failures in server/Protocol/SessionHandler.cs
-- [ ] T042 [US1] Implement throttleDelayMs backpressure emission when server-side buffers exceed threshold in server/Protocol/SessionHandler.cs
-- [ ] T066 [US1] Implement snapshot persistence batching (flush by maxBatchSize/maxBatchDelayMs) before calling storage in server/Protocol/SessionHandler.cs
-- [ ] T067 [P] [US1] Add tests for batching flush-by-size and flush-by-time behavior in server/Tests/Protocol/SessionHandlerTests.cs
-- [ ] T043 [US1] Implement a minimal Rust agent sender that connects, handshakes, sends snapshots, and retries until ack (timeout/disconnect) in agent/src/main.rs
-- [ ] T044 [US1] Verify retry/backoff defaults are documented in specs/001-protocol-messaging/quickstart.md and align wording with spec
-- [ ] T045 [US1] Add an in-process server session integration test (handshake→segmented snapshot→persist) using in-memory streams and fake storage in server/Tests/Protocol/SessionHandlerTests.cs
+- [ ] T042 [US1] Implement snapshot persistence batching (flush by maxBatchSize/maxBatchDelayMs) before calling storage in server/Protocol/SessionHandler.cs
+- [ ] T043 [P] [US1] Add tests for batching flush-by-size and flush-by-time behavior in server/Tests/Protocol/SessionHandlerTests.cs
+- [ ] T044 [US1] Implement throttleDelayMs backpressure emission when server-side buffers exceed threshold in server/Protocol/SessionHandler.cs
+- [ ] T045 [US1] Implement a minimal Rust agent sender that connects, handshakes, sends snapshots, and retries until ack (timeout/disconnect) in agent/src/main.rs
+- [ ] T046 [US1] Verify retry/backoff defaults are documented in specs/001-protocol-messaging/quickstart.md and align wording with spec
+- [ ] T047 [US1] Add an in-process server session integration test (handshake→segmented snapshot→persist) using in-memory streams and fake storage in server/Tests/Protocol/SessionHandlerTests.cs
 
 **Checkpoint**: User Story 1 is functional and independently testable.
 
@@ -97,16 +97,16 @@ description: "Task list for Binary Protocol & IO Core"
 
 ### Tests for User Story 2 (MANDATORY)
 
-- [ ] T046 [P] [US2] Add a Rust fixture that encodes a v1.1 snapshot with an appended optional field and verify v1.0 decode ignores it in agent/tests/protocol_tests.rs
-- [ ] T047 [P] [US2] Add a .NET test that decodes a v1.1 snapshot containing an appended optional field and verifies base fields decode correctly in server/Tests/Protocol/ProtocolTests.cs
-- [ ] T048 [P] [US2] Add handshake version negotiation tests (highest mutually supported) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs
+- [ ] T048 [P] [US2] Add a Rust fixture that encodes a v1.1 snapshot with an appended optional field and verify v1.0 decode ignores it in agent/tests/protocol_tests.rs
+- [ ] T049 [P] [US2] Add a .NET test that decodes a v1.1 snapshot containing an appended optional field and verifies base fields decode correctly in server/Tests/Protocol/ProtocolTests.cs
+- [ ] T050 [P] [US2] Add handshake version negotiation tests (highest mutually supported) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs
 
 ### Implementation for User Story 2
 
-- [ ] T049 [US2] Implement handshake version negotiation to highest mutually supported and return chosen version in HandshakeAck in server/Protocol/SessionHandler.cs
-- [ ] T050 [US2] Update agent handshake to send supported range and adopt server-chosen version from HandshakeAck in agent/src/protocol.rs and agent/src/main.rs
-- [ ] T051 [US2] Define an optional v1.1 extension field appended to SnapshotPayload and implement encode in agent/src/protocol.rs
-- [ ] T052 [US2] Update server snapshot decode to ignore trailing bytes and optionally parse v1.1 extensions when present in server/Protocol/FrameCodec.cs
+- [ ] T051 [US2] Implement handshake version negotiation to highest mutually supported and return chosen version in HandshakeAck in server/Protocol/SessionHandler.cs
+- [ ] T052 [US2] Update agent handshake to send supported range and adopt server-chosen version from HandshakeAck in agent/src/protocol.rs and agent/src/main.rs
+- [ ] T053 [US2] Define an optional v1.1 extension field appended to SnapshotPayload and implement encode in agent/src/protocol.rs
+- [ ] T054 [US2] Update server snapshot decode to ignore trailing bytes and optionally parse v1.1 extensions when present in server/Protocol/FrameCodec.cs
 
 **Checkpoint**: Protocol evolution is safe and mixed-version operation is testable.
 
@@ -120,16 +120,16 @@ description: "Task list for Binary Protocol & IO Core"
 
 ### Tests for User Story 3 (MANDATORY)
 
-- [ ] T053 [P] [US3] Add tests for invalid message type / corrupt payload producing Error responses in server/Tests/Protocol/ProtocolTests.cs
-- [ ] T054 [P] [US3] Add tests for heartbeat handling (send/receive) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs
-- [ ] T055 [P] [US3] Add tests for throttleDelayMs backpressure affecting agent send loop timing in agent/tests/protocol_tests.rs
+- [ ] T055 [P] [US3] Add tests for invalid message type / corrupt payload producing Error responses in server/Tests/Protocol/ProtocolTests.cs
+- [ ] T056 [P] [US3] Add tests for heartbeat handling (send/receive) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs
+- [ ] T057 [P] [US3] Add tests for throttleDelayMs backpressure affecting agent send loop timing in agent/tests/protocol_tests.rs
 
 ### Implementation for User Story 3
 
-- [ ] T056 [US3] Implement protocol Error responses on decode/validation failures (without killing session when safe) in server/Protocol/SessionHandler.cs
-- [ ] T057 [US3] Add lightweight counters for message counts, error types, and backpressure events in server/Protocol/SessionHandler.cs
-- [ ] T058 [US3] Implement agent heartbeat emission and server heartbeat timeout detection in agent/src/main.rs and server/Protocol/SessionHandler.cs
-- [ ] T059 [US3] Add lightweight agent-side counters/logging for retries, acks, and backpressure in agent/src/main.rs
+- [ ] T058 [US3] Implement protocol Error responses on decode/validation failures (without killing session when safe) in server/Protocol/SessionHandler.cs
+- [ ] T059 [US3] Add lightweight counters for message counts, error types, and backpressure events in server/Protocol/SessionHandler.cs
+- [ ] T060 [US3] Implement agent heartbeat emission and server heartbeat timeout detection in agent/src/main.rs and server/Protocol/SessionHandler.cs
+- [ ] T061 [US3] Add lightweight agent-side counters/logging for retries, acks, and backpressure in agent/src/main.rs
 
 **Checkpoint**: Diagnostics exist and failure modes are survivable.
 
@@ -137,12 +137,13 @@ description: "Task list for Binary Protocol & IO Core"
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T060 [P] Verify “Security: plaintext dev-only” section exists in specs/001-protocol-messaging/quickstart.md and align wording with spec
-- [ ] T061 Enforce a runtime guardrail: server refuses to start in plaintext mode unless an explicit opt-in is set (e.g., env var) in server/Program.cs
-- [ ] T062 [P] Add a test for the plaintext guardrail (startup/config test) in server/Tests/PlaintextGuardrailTests.cs
-- [ ] T063 [P] Align protocol docs and contract field names/discriminants in specs/001-protocol-messaging/spec.md and specs/001-protocol-messaging/contracts/protocol-openapi.yaml (MessageType mapping 1–7, Backpressure uses throttleDelayMs not throttleLevel)
-- [ ] T064 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes
-- [ ] T065 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments
+- [ ] T062 [P] Verify “Security: plaintext dev-only” section exists in specs/001-protocol-messaging/quickstart.md and align wording with spec
+- [x] T063 [P] Align protocol docs and contract field names/discriminants in specs/001-protocol-messaging/spec.md and specs/001-protocol-messaging/contracts/protocol-openapi.yaml (MessageType mapping 1–7, Backpressure uses throttleDelayMs not throttleLevel)
+- [ ] T064 Enforce a runtime guardrail: server refuses to start in plaintext mode unless an explicit opt-in is set (e.g., env var) in server/Program.cs
+- [ ] T065 [P] Add a test for the plaintext guardrail (startup/config test) in server/Tests/PlaintextGuardrailTests.cs
+- [ ] T066 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes
+- [ ] T067 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments
+- [ ] T068 [P] Add/verify intent + invariant comments for protocol framing/codec/session handling in agent/src/protocol.rs, server/Protocol/FrameCodec.cs, and server/Protocol/SessionHandler.cs
 
 ---
 
