@@ -14,9 +14,6 @@ Sync Impact Report
 	- ✅ Aligned: .specify/templates/plan-template.md (Constitution Check gates sourced from this file)
 	- ✅ Aligned: .specify/templates/spec-template.md (user stories and acceptance tests align)
 	- ✅ Aligned: .specify/templates/agent-file-template.md (no conflicting guidance)
-- Follow-up TODOs:
-	- TODO(RATIFICATION_DATE): Original adoption date not known; set once decided.
--->
 
 # Client Server Monitoring Constitution
 <!-- Project: fy26-clientmonitoringv3 -->

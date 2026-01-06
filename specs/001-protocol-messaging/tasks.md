@@ -42,7 +42,7 @@ description: "Task list for Binary Protocol & IO Core"
 
 ## Phase 3: User Story 1 - Ingest binary snapshots end-to-end (Priority: P1) 🎯 MVP
 
-**Goal**: A runnable .NET Linux server accepts connections, performs handshake gating, ingests snapshots from a Rust agent, applies backpressure, and persists records via the storage interface without drops.
+**Goal**: A runnable .NET Linux server accepts connections, performs handshake gating, ingests snapshots from a Rust agent, applies backpressure, and persists records via the storage interface; no silent drops; retries until ack; de-dupe by messageId
 
 **Independent Test**: Run server + one agent; send handshake then snapshot(s); verify storage append count matches persisted snapshots and decoded fields are preserved.
 
