@@ -2207,3 +2207,187 @@ PY
 - Verified all 71 task checklist lines now include an FR/SC/Meta annotation (0 missing).
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: Re-running the consistency scan now that tasks are FR-tagged and the constitution ratification date is set; I’ll refresh line-linked references and regenerate the findings/coverage tables.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '105,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/plan.md | sed -n '1,110p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,190p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '20,140p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -nE "TODO\(|TODO|TKTK|\?\?\?|<placeholder>" specs/001-protocol-messaging/spec.md specs/001-protocol-messaging/plan.md specs/001-protocol-messaging/tasks.md .specify/memory/constitution.md || true
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '1,40p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - << 'PY'
+import re, pathlib
+base = pathlib.Path('specs/001-protocol-messaging')
+spec_lines = base.joinpath('spec.md').read_text().splitlines()
+tasks_lines = base.joinpath('tasks.md').read_text().splitlines()
+
+fr_re = re.compile(r'^- \*\*(FR-\d+)\*\*:\s*(.*)')
+frs=[]
+for i,l in enumerate(spec_lines, start=1):
+    m=fr_re.match(l)
+    if m:
+        frs.append((m.group(1), m.group(2).strip(), i))
+
+# Map FR -> task IDs by parsing trailing annotations
+# e.g. "... (FR-002, FR-009)"
+task_line_re = re.compile(r'^\s*- \[[ xX]\] (T\d{3})\b.*\(([^)]*)\)\s*$')
+fr_to_tasks={fr:[] for fr,_,_ in frs}
+unmapped_tasks=[]
+for i,l in enumerate(tasks_lines, start=1):
+    m=task_line_re.match(l)
+    if not m:
+        continue
+    tid=m.group(1)
+    tags=[t.strip() for t in m.group(2).split(',')]
+    mapped=False
+    for t in tags:
+        if t in fr_to_tasks:
+            fr_to_tasks[t].append(tid)
+            mapped=True
+    if not mapped:
+        # task might be Meta or SC; keep note
+        unmapped_tasks.append((tid, tags, i))
+
+# Produce summary stats
+covered=sum(1 for fr in fr_to_tasks if fr_to_tasks[fr])
+print('FR_COUNT', len(frs))
+print('TASK_LINES', len([1 for l in tasks_lines if l.strip().startswith('- [')]))
+print('FR_COVERED', covered)
+print('COVERAGE_PCT', round(covered/len(frs)*100, 1) if frs else 0)
+print('UNMAPPED_TASKS', len(unmapped_tasks))
+for tid,tags,i in unmapped_tasks:
+    if 'Meta' in tags or any(t.startswith('SC-') for t in tags):
+        continue
+    print('UNEXPECTED_UNMAPPED', tid, tags, 'line', i)
+
+# Print a compact FR->tasks table rows
+for fr,_,_ in frs:
+    print(fr, ','.join(sorted(set(fr_to_tasks[fr]))))
+PY
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| A1 | Inconsistency | MEDIUM | constitution.md, constitution.md | Constitution now has **Ratified: 2025-01-06**, but the header comment still lists a TODO stating the ratification date is not known. | Update/remove the stale TODO line so the constitution is self-consistent. |
+| A2 | Ambiguity | MEDIUM | tasks.md | US1 goal text says “persists records … **without drops**” which can be misread as “no loss ever”, conflicting with the spec’s at-least-once + retry semantics framing (it’s really “no silent drops”). | Rephrase goal to “no silent drops; retries until ack; de-dupe by messageId” to match FR-007. |
+
+## Coverage Summary Table (from task annotations)
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| FR-001 | Yes | T023, T024, T025 | Collection + deterministic shaping. |
+| FR-002 | Yes | T004, T005, T006, T007, T063 | Envelope + CRC32 framing; docs alignment. |
+| FR-003 | Yes | T030, T031, T033, T048–T054 | Version negotiation + optional evolution tests. |
+| FR-004 | Yes | T030, T031, T033, T038, T045 | Handshake gating + identity/range. |
+| FR-005 | Yes | T008–T010, T025 | Snapshot schema + deterministic ordering. |
+| FR-006 | Yes | T011–T014, T044, T056–T057, T060, T063 | Backpressure + heartbeat. |
+| FR-007 | Yes | T004, T006–T007, T017, T020, T039, T041, T045–T046, T067 | At-least-once + de-dupe + retry/backoff. |
+| FR-008 | Yes | T062, T064, T065 | Plaintext dev-only + guardrail. |
+| FR-009 | Yes | T005, T015–T016, T018, T021–T022, T026–T029, T032, T040 | Size limits + compression + segmentation. |
+| FR-010 | Yes | T019, T037–T038, T041–T044, T055, T058 | Ingestion pipeline + batching/backpressure. |
+| FR-011 | Yes | T019, T034–T036, T070 | Storage interface + rotation policy doc. |
+| FR-012 | Yes | T055, T058–T059, T061 | Counters/logs + error handling. |
+| FR-013 | Yes | T047, T066, T069 | Unit/combination + interop fixture + validation run. |
+
+## Constitution Alignment Issues
+- No MUST-level conflicts found between spec/plan/tasks and the constitution principles.
+- One internal constitution hygiene inconsistency remains (A1).
+
+## Unmapped Tasks
+- “Meta” tasks: T001–T003, T068
+- “Success-criteria validation” task: T071
+
+## Metrics
+- Total Requirements: 13
+- Total Tasks: 71
+- Coverage %: 100%
+- Ambiguity Count (spec/plan/tasks): 0
+- Duplication Count: 0
+- Critical Issues Count: 0
+
+## Next Actions
+- Fix A1 in the constitution header comment.
+- Optionally fix A2 wording in the US1 goal line to avoid semantics drift.
+
+Want me to apply the concrete edits for A1 and A2 (two small text-only patches)?
+
+User: check last time
+
+GitHub Copilot: I’ll re-check the two files that changed since the last run (constitution + tasks), then re-run the quick consistency/coverage checks to confirm whether A1/A2 are resolved.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && git --no-pager diff -- .specify/memory/constitution.md specs/001-protocol-messaging/tasks.md
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '1,40p' && echo '---' && nl -ba .specify/memory/constitution.md | sed -n '115,135p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '35,70p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - << 'PY'
+import re, pathlib
+base = pathlib.Path('specs/001-protocol-messaging')
+spec_lines = base.joinpath('spec.md').read_text().splitlines()
+tasks_lines = base.joinpath('tasks.md').read_text().splitlines()
+
+fr_re = re.compile(r'^- \*\*(FR-\d+)\*\*:\s*(.*)')
+frs=[]
+for i,l in enumerate(spec_lines, start=1):
+    m=fr_re.match(l)
+    if m:
+        frs.append((m.group(1), m.group(2).strip(), i))
+
+# Parse task lines with annotations
+# note: allow trailing punctuation after parens
+
+task_line_re = re.compile(r'^\s*- \[[ xX]\] (T\d{3})\b.*\(([^)]*)\)\s*\S*$|^\s*- \[[ xX]\] (T\d{3})\b.*\(([^)]*)\)\s*$')
+fr_to_tasks={fr:[] for fr,_,_ in frs}
+unmapped=[]
+for i,l in enumerate(tasks_lines, start=1):
+    if not l.strip().startswith('- ['):
+        continue
+    # find last (...) in line
+    m = re.search(r'\(([^()]*)\)\s*$', l)
+    if not m:
+        unmapped.append((i,l,'NO_TAGS'))
+        continue
+    tags=[t.strip() for t in m.group(1).split(',') if t.strip()]
+    mapped=False
+    for t in tags:
+        if t in fr_to_tasks:
+            fr_to_tasks[t].append(re.search(r'(T\d{3})', l).group(1))
+            mapped=True
+    if not mapped and not any(t=='Meta' or t.startswith('SC-') for t in tags):
+        unmapped.append((i,l,tags))
+
+covered=sum(1 for fr in fr_to_tasks if fr_to_tasks[fr])
+print('FR_COUNT', len(frs))
+print('FR_COVERED', covered)
+print('COVERAGE_PCT', round(covered/len(frs)*100, 1) if frs else 0)
+print('UNMAPPED_NON_META_SC', len(unmapped))
+if unmapped:
+    for i,l,t in unmapped[:10]:
+        print('UNMAPPED', i, t, l)
+PY
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -nE "TODO\(|TKTK|\?\?\?|<placeholder>" .specify/memory/constitution.md specs/001-protocol-messaging/tasks.md || true
+
+Last time’s two findings are now resolved based on current file contents:
+
+- A1 (constitution ratification TODO drift) is fixed: constitution.md shows **Ratified: 2025-01-06** and no longer contains the stale `TODO(RATIFICATION_DATE)` note in the header block (grep finds no TODO placeholders).
+- A2 (US1 “without drops” ambiguity) is fixed: the US1 goal in tasks.md now reads “no silent drops; retries until ack; de-dupe by messageId”, aligning with FR-007 semantics.
+
+Consistency/coverage quick check:
+- FR coverage from task annotations remains 100% (all 13 FRs mapped to ≥1 task).
+- No placeholders found in the two edited files (grep clean).
+
+One small note: my automated “unmapped bullet” detector now only complains about the “Parallel Execution Examples” bullets because they start with `- [P]` but they are not task checklist items; they’re just examples and can be ignored.
