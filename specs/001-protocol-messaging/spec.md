@@ -130,7 +130,6 @@ increments error counters, and both remain alive.
   truncation/segmentation rules MUST be defined when payload exceeds
   size targets.
 - **FR-006**: Transport sessions MUST include keepalive/heartbeat and
-- **FR-006**: Transport sessions MUST include keepalive/heartbeat and
   backpressure signaling so the server can slow senders without
   disconnects; backpressure MUST be expressed as a throttle level (e.g.,
   numeric delay/level) that the agent applies to its snapshot send rate.
@@ -176,10 +175,8 @@ increments error counters, and both remain alive.
 - **SnapshotPayload**: Sampling window, aggregate CPU/memory, list of
   process samples (pid, name, cpu%, mem%/rss, optional cmdline, ordering
   by cpu%).
-- **BackpressureSignal**: Server-to-agent message indicating throttle
 - **BackpressureSignal**: Server-to-agent message indicating a throttle
   level (numeric delay/level) the agent applies to its send rate.
-- **Ack/Nack**: Correlates to message ids; carries status and optional
 - **Ack/Nack**: Correlates to message ids; carries status and optional
   error code (for segmented snapshots, each part is acked by its own
   messageId).

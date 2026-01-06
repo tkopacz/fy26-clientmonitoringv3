@@ -18,7 +18,7 @@ Align Rust agent and .NET server on the binary protocol contract (framing, envel
 **Target Platform**: Rust agent on Windows/Linux; .NET server on Linux  
 **Project Type**: Dual projects (Rust crate `agent`, .NET server `MonitoringServer`)  
 **Performance Goals**: Snapshot frame target ≤ 64 KB typical; handshake→first snapshot ≤ 2s p95; agent overhead ≤2% CPU p95 / ≤25 MB steady per constitution  
-**Constraints**: At-most-once delivery semantics; backpressure honored; compression optional via capability flag; no macOS agent  
+**Constraints**: At-least-once delivery for snapshots (retry until ack) with server de-dupe by messageId; backpressure via throttle level; compression optional via capability flag; segment oversized all-process snapshots; no macOS agent  
 **Scale/Scope**: Thousands of concurrent agents; protocol evolution must remain backward compatible
 
 ## Constitution Check
