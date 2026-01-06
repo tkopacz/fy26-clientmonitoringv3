@@ -26,4 +26,15 @@
 ## Notes
 - Ensure `MessageType` discriminants remain aligned (1–7) across Rust and .NET when modifying protocol.rs or decoder logic.
 - Keep the storage interface contract intact; append-to-file is the reference implementation.
-- Backpressure uses a throttle level and segmented snapshot parts are acked individually; keep these semantics stable across protocol version bumps.
+- Backpressure uses `throttleDelayMs` (milliseconds; 0 = no throttle) and segmented snapshot parts are acked individually; keep these semantics stable across protocol version bumps.
+
+## Security: plaintext dev-only
+
+- Plaintext transport is allowed for local/dev only.
+- Production deployments MUST NOT run plaintext.
+- The server MUST refuse to start in plaintext mode unless explicitly opted-in (guardrail; see tasks).
+
+## Defaults (deterministic)
+
+- Retry policy: `ackTimeoutMs = 2000`; exponential backoff 500 → 30000ms; no jitter.
+- Size guardrails: `targetSnapshotBytes = 65536` (64 KiB typical payload target); `maxFrameBytes = 1048576` (1 MiB hard cap).

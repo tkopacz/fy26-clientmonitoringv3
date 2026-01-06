@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement and validate a compact, versioned binary protocol shared by the Rust agent and .NET server, including: explicit length-prefixed framing, version negotiation, handshake gating, optional zstd compression (level 3), segmented all-process snapshots with reassembly, at-least-once snapshot delivery (retry until ack) with server de-duplication by `messageId`, and throttle-level backpressure signaling. Ensure cross-language parity via encode/decode round-trips and fixture-based interoperability tests.
+Implement and validate a compact, versioned binary protocol shared by the Rust agent and .NET server, including: explicit length-prefixed framing, version negotiation, handshake gating, optional zstd compression (level 3), segmented all-process snapshots with reassembly, at-least-once snapshot delivery (retry until ack) with server de-duplication by `messageId`, and `throttleDelayMs` backpressure signaling (milliseconds). Ensure cross-language parity via encode/decode round-trips and fixture-based interoperability tests.
 
 ## Technical Context
 
@@ -16,7 +16,7 @@ Implement and validate a compact, versioned binary protocol shared by the Rust a
 **Target Platform**: Rust agent on Windows/Linux; .NET server on Linux  
 **Project Type**: Dual project (Rust crate + .NET server)  
 **Performance Goals**: Typical top-process snapshot ≤ 64 KB; handshake→first snapshot ≤ 2s p95; agent overhead p95 ≤ 2% CPU and ≤ 25 MB memory steady state  
-**Constraints**: At-least-once snapshot delivery with server de-dupe by `messageId`; handshake negotiates highest mutually supported protocol version; optional zstd compression (level 3) via capability flag; oversized all-process snapshots are segmented (common `snapshotId`, part index/count) and each part is acked; backpressure is expressed as a throttle level; plaintext transport is local/dev only (no production plaintext)  
+**Constraints**: At-least-once snapshot delivery with server de-dupe by `messageId`; handshake negotiates highest mutually supported protocol version; optional zstd compression (level 3) via capability flag; oversized all-process snapshots are segmented (common `snapshotId`, part index/count) and each part is acked; backpressure is expressed as `throttleDelayMs` (milliseconds); plaintext transport is local/dev only (no production plaintext)  
 **Scale/Scope**: Support 1,000 concurrent agent sessions; protocol evolution must be backward compatible via optional fields and versioning
 
 ## Constitution Check

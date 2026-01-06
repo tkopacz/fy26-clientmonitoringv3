@@ -8,9 +8,13 @@
 - Validation: Length matches payload bytes; message_type within known range.
 
 ### Handshake
-- Fields: `protocol_version` (u16), `agent_version` (string), `agent_id` (string/uuid), `os` (enum), `supports_all_processes` (bool), `supports_compression` (bool), `timestamp_utc` (i64).
-- Validation: protocol_version >= minimum supported; agent_id non-empty.
+- Fields: `min_version` (u16), `max_version` (u16), `agent_version` (string), `agent_id` (string/uuid), `os` (enum), `supports_all_processes` (bool), `supports_compression` (bool), `timestamp_utc` (i64).
+- Validation: min_version <= max_version; max_version >= minimum supported; agent_id non-empty.
 - State: Must precede snapshots; acknowledged by server.
+
+### HandshakeAck
+- Fields: `chosen_version` (u16), `compression_selected` (bool), `timestamp_utc` (i64).
+- Validation: chosen_version within the overlap of agent/server supported ranges.
 
 ### Snapshot
 - Fields: `snapshot_id` (u64 or uuid), `window_start` (i64), `window_end` (i64), `cpu_total_pct` (f32), `mem_used_bytes` (u64), `mem_total_bytes` (u64), `processes` (list of ProcessSample), `compression_applied` (bool).
@@ -28,8 +32,8 @@
 - Validation: none beyond schema; lightweight keepalive.
 
 ### Backpressure
-- Fields: `throttle_level` (u16), `reason` (string), `timestamp_utc` (i64).
-- Validation: throttle_level within a configured range; reason optional text length cap (e.g., 256 chars).
+- Fields: `throttle_delay_ms` (u32, 0 = none), `reason` (string), `timestamp_utc` (i64).
+- Validation: throttle_delay_ms within a configured range; reason optional text length cap (e.g., 256 chars).
 
 ### Ack
 - Fields: `message_id` (u64), `status` (enum: ok|error), `error_code` (optional string), `timestamp_utc` (i64).
@@ -41,7 +45,7 @@
 
 ## State Transitions
 - Handshake → (Ack) → Snapshot* → (Ack/Backpressure) → Heartbeat as keepalive.
-- Backpressure throttle level dictates snapshot send rate.
+- Backpressure throttle delay (milliseconds) dictates snapshot send rate.
 - Errors do not close session by default; agent may reconnect on repeated errors.
 
 ## Segmentation & Acks

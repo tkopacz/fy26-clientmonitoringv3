@@ -21,12 +21,12 @@
 - Alternatives considered: Higher levels (too slow); gzip (incompatible with current code paths).
 
 ## Snapshot size guardrails
-- Decision: Retain 64 KB target for typical snapshot payloads; if an all-process snapshot is still oversized after negotiated zstd compression, segment it into multiple parts that share a common `snapshotId` and include part index/count for reassembly.
+- Decision: Retain 64 KiB `targetSnapshotBytes = 65536` for typical snapshot payloads and enforce `maxFrameBytes = 1048576` (1 MiB hard cap). If an all-process snapshot is still oversized after negotiated zstd compression, segment it into multiple parts that share a common `snapshotId` and include part index/count for reassembly.
 - Rationale: Preserves “all processes” functionality without silent data loss while keeping typical snapshots small.
 - Alternatives considered: Truncation only (drops process data); raising size limit (risks memory/backpressure); rejecting oversize (breaks “all processes” use case).
 
 ## Backpressure signaling
-- Decision: Server-to-agent backpressure is expressed as a throttle level (numeric delay/level) that the agent applies to its snapshot send rate.
+- Decision: Server-to-agent backpressure is expressed as `throttleDelayMs` (unsigned integer milliseconds; 0 = no throttle) that the agent applies to its snapshot send rate.
 - Rationale: Simple to implement and test across Rust and .NET and avoids complex credit systems.
 - Alternatives considered: Pause/resume (more state transitions); credit-based flow control (more protocol state).
 
