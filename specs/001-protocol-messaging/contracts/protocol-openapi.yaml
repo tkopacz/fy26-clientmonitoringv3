@@ -35,9 +35,14 @@ components:
     Envelope:
       type: object
       properties:
-        version:
+        versionMajor:
           type: integer
           format: int32
+          description: Protocol version major byte.
+        versionMinor:
+          type: integer
+          format: int32
+          description: Protocol version minor byte.
         messageType:
           type: integer
           format: int32
@@ -91,8 +96,6 @@ components:
         memTotalBytes:
           type: integer
           format: int64
-        compressionApplied:
-          type: boolean
         processes:
           type: array
           items:

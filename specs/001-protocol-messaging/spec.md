@@ -198,8 +198,8 @@ increments error counters, and both remain alive.
 
 ### Key Entities *(include if feature involves data)*
 
-- **ProtocolEnvelope**: Contains version, message type, length, and
-  envelope metadata (timestamps, platform, agent id).
+- **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
+  message type, and envelope metadata (timestamps, platform, agent id).
 - **AgentIdentity**: Agent instance id, OS type, agent version,
   capability flags (all-process allowed, compression if any).
 - **SnapshotPayload**: Sampling window, aggregate CPU/memory, list of

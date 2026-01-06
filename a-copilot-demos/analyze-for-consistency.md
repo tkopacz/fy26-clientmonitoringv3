@@ -1469,3 +1469,104 @@ Using "Apply Patch"
 If you want, I can re-run the consistency analysis pass now (same read-only workflow) to confirm the HIGH/MED issues are cleared.
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: Re-running the consistency analysis on the updated spec/plan/tasks/contracts to confirm the previous HIGH/MED issues are actually resolved and to surface any new drift introduced by the latest edits.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/data-model.md | sed -n '1,120p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/contracts/protocol-openapi.yaml | sed -n '1,220p'
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| I1 | Inconsistency | MEDIUM | spec.md, data-model.md | Spec “Key Entities” still says ProtocolEnvelope contains `length`, but the data model removed `length` from the envelope (length is frame prefix). | Update spec Key Entities to remove `length` from ProtocolEnvelope (or explicitly define it as “frame length prefix” not an envelope field). |
+| U1 | Underspecification | MEDIUM | data-model.md | Data-model validation still says “Length matches payload bytes” even though `length` is no longer an envelope field. | Change validation text to “frame length prefix matches bytes read” (and keep message_type range validation). |
+| I2 | Inconsistency | MEDIUM | data-model.md, spec.md | Version representation drifts across artifacts: data-model uses `u16` for versions (and min/max), while the codebase uses MAJOR/MINOR bytes (and the spec describes MAJOR/MINOR semantics but not wire type). | Pick one canonical on-wire representation for versions in the docs (either `u16` packed or `major/minor` bytes) and align spec+data-model to it. |
+| A1 | Ambiguity | MEDIUM | protocol-openapi.yaml, data-model.md | `compressionApplied` exists in OpenAPI Snapshot and `compression_applied` exists in data-model Snapshot, but the protocol already has an envelope `compressed` flag; the spec doesn’t clearly define whether snapshot payload also carries a compression marker. | Decide: use envelope-only (recommended) and remove snapshot-level compressionApplied from contract/data-model, or document it as “derived duplicate of envelope.compressed” and keep it consistent everywhere. |
+| D1 | Duplication/Staleness | LOW | tasks.md | Task T063 (“align docs/contract mapping and throttleDelayMs”) may now be partially complete due to the recent fixes, but it’s still listed as pending without a narrowed remaining scope. | Update T063 wording to the remaining concrete drift (e.g., “remove `compressionApplied` ambiguity” / “remove `length` from spec Key Entities”), or mark it done when you track execution elsewhere. |
+| I3 | Inconsistency | LOW | tasks.md | Task IDs are no longer in file order (T066/T067 appear before T043), which can confuse execution sequencing even though IDs remain unique. | Move T066/T067 to the end of US1 implementation section (after T045) or renumber/reorder for readability. |
+
+## Coverage Summary Table
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| agent-collects-cpu-mem-topn-all-process | Yes | T023–T025 | Covered. |
+| versioned-binary-protocol-framing-envelope-schemas | Yes | T004–T014 | Covered. |
+| negotiate-highest-mutually-supported-version | Yes | T033, T048–T050 | Covered. |
+| handshake-gating-before-snapshots | Yes | T038, T043, T045 | Covered. |
+| snapshot-schema-window-aggregates-processes | Yes | T008–T010 | Now aligned to mem used+total in spec. |
+| backpressure-throttleDelayMs-ms | Yes | T011–T014, T042, T055 | Contract now matches throttleDelayMs. |
+| at-least-once-retry-ack-dedupe | Yes | T017, T020, T039, T041, T043 | Covered. |
+| plaintext-dev-only-guardrail | Yes | T060–T062 | Covered. |
+| compression-and-size-guardrails-segmentation | Yes | T015–T016, T021–T022, T026–T029, T032 | Covered. |
+| ingestion-batching-backpressure-validation | Yes | T038–T042, T066–T067 | Batching now explicitly tasked. |
+| storage-interface-abstraction | Yes | T034–T036 | Covered. |
+| observability-logs-counters | Yes | T057–T059 | Covered. |
+| tests-unit-and-combination | Yes | Many | Constitution alignment is reflected in tasking. |
+
+**Constitution Alignment Issues**
+- No new MUST-level conflicts detected in the docs set. Remaining items are mostly doc-model drift (versions, compression flag placement) and task hygiene.
+
+**Unmapped Tasks**
+- None that look “orphaned”; the LOW item is “stale scope” rather than unmapped.
+
+**Metrics**
+- Total Requirements: 13
+- Total Tasks: 67
+- Coverage % (requirements with ≥1 task): 100%
+- Ambiguity Count: 1
+- Duplication/Staleness Count: 1
+- Critical Issues Count: 0
+
+## Next Actions
+- Recommended before implementation: resolve I1 + U1 + I2 + A1 (they’re the remaining places where engineers could implement different wire formats based on different docs).
+- After that, you’re clear to proceed to code alignment work (the protocol schema changes in Rust/.NET).
+
+If you want me to apply remediation edits for the remaining MED items, confirm whether the canonical on-wire version should be (a) `major/minor` bytes (as in current code) or (b) packed `u16` (as in data-model).
+
+User: yes,  apply remediation edits for the remaining MED items, on-wire version should be major/minor
+
+GitHub Copilot: Applying the remaining MED remediations now: I’ll align docs to the on-wire major/minor version format, remove the now-redundant `length` and `compressionApplied` fields from docs/contracts, and fix the stale “length matches payload bytes” validation wording.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+**Remediations Applied (MED items)**
+- Removed `length` from spec “Key Entities” ProtocolEnvelope and clarified on-wire version is MAJOR/MINOR bytes: spec.md
+- Updated data model to use MAJOR/MINOR bytes for versions (envelope + handshake min/max + handshake ack chosen), fixed the stale validation text that referenced an envelope length field, and removed snapshot-level `compression_applied` (compression is envelope-level): data-model.md
+- Updated OpenAPI envelope version representation to `versionMajor`/`versionMinor` and removed snapshot `compressionApplied`: protocol-openapi.yaml
+
+**What’s left**
+- The remaining “consistency report” findings are now mostly LOW hygiene (task ordering/staleness wording), not MED/HIGH spec drift.
+
+If you want, I can do one last quick consistency pass to confirm I1/U1/I2/A1 are fully cleared and then pivot back to the code alignment work (backpressure/handshake/segmentation changes).
+
+Made changes.
