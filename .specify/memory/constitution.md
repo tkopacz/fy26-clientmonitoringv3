@@ -120,6 +120,6 @@ below.
 - Review Cadence: Quarterly compliance review with adjustments based on
 	operational feedback and test coverage metrics.
 
-**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE): Original adoption date not yet set | **Last Amended**: 2025-12-21
+**Version**: 1.0.0 | **Ratified**: 2025-01-06 | **Last Amended**: 2025-12-21
 
 

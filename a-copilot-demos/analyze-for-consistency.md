@@ -2010,3 +2010,200 @@ Checked [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messa
 Changes are in tasks.md.
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: I’ll re-run the Speckit prerequisite check and re-scan the updated spec/plan/tasks against the constitution, then produce an updated consistency/coverage report (no file edits).
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '100,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/plan.md | sed -n '1,120p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,210p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '20,130p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && rg -n "TODO|TKTK|\?\?\?|<placeholder>" specs/001-protocol-messaging/spec.md specs/001-protocol-messaging/plan.md specs/001-protocol-messaging/tasks.md || true
+
+Summarized conversation historyPrereqs and artifact locations are confirmed; next I’ll do a lightweight placeholder scan (without ripgrep), then produce the consistency + coverage report with exact line-linked references.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -nE "TODO|TKTK|\?\?\?|<placeholder>" -n specs/001-protocol-messaging/spec.md specs/001-protocol-messaging/plan.md specs/001-protocol-messaging/tasks.md || true
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - << 'PY'
+import re, pathlib
+base = pathlib.Path('specs/001-protocol-messaging')
+files = [base/'spec.md', base/'plan.md', base/'tasks.md']
+reqs = []
+# Extract FR-* lines as requirement inventory
+fr_re = re.compile(r'^- \*\*(FR-\d+)\*\*:\s*(.*)')
+for p in files[:1]:
+    for i,line in enumerate(p.read_text().splitlines(), start=1):
+        m=fr_re.match(line)
+        if m:
+            fr_id=m.group(1)
+            text=m.group(2).strip()
+            # derive slug-ish key
+            key = re.sub(r'[^a-z0-9]+','-', text.lower()).strip('-')
+            key = '-'.join(key.split('-')[:8])
+            reqs.append((fr_id, key, i))
+
+# Extract task IDs
+task_re = re.compile(r'^\s*- \[[ xX]\] (T\d{3})\b(.*)$')
+plan_task_ids=set()
+for i,line in enumerate((base/'tasks.md').read_text().splitlines(), start=1):
+    m=task_re.match(line)
+    if m:
+        plan_task_ids.add(m.group(1))
+
+print('FR_COUNT', len(reqs))
+print('TASK_COUNT', len(plan_task_ids))
+# quick coverage heuristic: map FRs to tasks by keyword overlap
+text_tasks = (base/'tasks.md').read_text().lower()
+coverage=[]
+for fr_id,key,line_no in reqs:
+    # look for FR-xyz explicit references first
+    has = (fr_id.lower() in text_tasks)
+    coverage.append((fr_id, key, has, line_no))
+print('FR_EXPLICIT_MENTIONED', sum(1 for x in coverage if x[2]))
+PY
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - << 'PY'
+import re, pathlib
+base = pathlib.Path('specs/001-protocol-messaging')
+# Build a more useful mapping by topic heuristics
+spec = (base/'spec.md').read_text().splitlines()
+tasks = (base/'tasks.md').read_text().splitlines()
+
+frs=[]
+fr_re = re.compile(r'^- \*\*(FR-\d+)\*\*:\s*(.*)')
+for i,l in enumerate(spec, start=1):
+    m=fr_re.match(l)
+    if m:
+        frs.append((m.group(1), m.group(2), i))
+
+# topic tags -> tasks that mention them
+topics = {
+  'handshake': ['handshake','handshakeack','version negotiation','minversion','maxversion','ack before snapshots'],
+  'framing_crc': ['crc32','length prefix','framing','framecodec'],
+  'backpressure': ['backpressure','throttledelayms'],
+  'reliability_dedupe': ['at-least-once','retry','dedup','messageid','acktimeout','backoff'],
+  'segmentation': ['segment','segmented','partindex','partcount','snapshotid','reassembly'],
+  'compression': ['zstd','compression'],
+  'size_limits': ['maxframebytes','targetsnapshotbytes','too-large'],
+  'storage_rotation': ['rotation policy','filestoragewriter'],
+  'observability': ['counters','logs','metrics','diagnostics'],
+  'tests': ['tests','protocoltests','integration test','fixture'],
+}
+
+def find_tasks(keywords):
+    hits=set()
+    task_re = re.compile(r'^\s*- \[[ xX]\] (T\d{3})\b')
+    current=None
+    for l in tasks:
+        m=task_re.match(l)
+        if m:
+            current=m.group(1)
+        if current and any(k in l.lower() for k in keywords):
+            hits.add(current)
+    return sorted(hits)
+
+for name, kws in topics.items():
+    ids = find_tasks(kws)
+    print(name, len(ids), ','.join(ids[:15]) + ('...' if len(ids)>15 else ''))
+PY
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| A1 | Coverage | LOW | tasks.md | Tasks generally don’t reference FR IDs (only a couple explicit FR mentions were found), which makes traceability weaker during execution/review. | Optionally annotate tasks (or phase headings) with the FR-* they satisfy, especially Phase 2 + US1. |
+| A2 | Underspecification | MEDIUM | spec.md, tasks.md | FR-009 requires explicit “reject too-large frames with an explicit error response”; tasks include tests (T022), but there isn’t a clearly named implementation task for “error response on maxFrameBytes violation” (it may be implicit in codec/session tasks). | Ensure max-frame enforcement + error response behavior is explicitly implemented as part of T005/T038/T058 (or add an explicit task if you want it unambiguous). |
+| A3 | Constitution Hygiene | LOW | constitution.md | Constitution contains a TODO placeholder for ratification date. Not a spec/plan/tasks conflict, but it’s a lingering placeholder in the governing doc. | Fill in ratification date when known (separate from feature work). |
+
+### Coverage Summary Table
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| fr-001-agent-collect-cpu-usage-memory-usage | Yes | T023, T024, T025 | Collection coverage + deterministic top-N shaping. |
+| fr-002-versioned-binary-protocol-define-framing | Yes | T004, T005, T008, T009 | Envelope + CRC32 framing + core schemas. |
+| fr-003-support-backward-compatible-evolution-version-negotiation | Yes | T033, T050, T051, T052, T054 | Highest mutually supported; optional trailing field decode. |
+| fr-004-handshake-include-identity-range-capabilities-ack-gating | Yes | T030, T031, T033, T038, T045 | Adds HandshakeAck + gating before snapshots. |
+| fr-005-snapshots-include-window-aggregates-per-process-ordering | Yes | T008, T009, T010, T025 | Deterministic ordering and schema alignment. |
+| fr-006-heartbeat-backpressure-throttledelayms | Yes | T011, T012, T013, T014, T044, T057 | Includes agent effective interval rule testing. |
+| fr-007-at-least-once-retry-ack-dedupe-by-messageid | Yes | T017, T020, T039, T041, T046 | De-dupe + deterministic retry/backoff + ack behavior. |
+| fr-008-plaintext-dev-only-document-risks-future-tls | Yes | T062, T064, T065 | Guardrail + wording alignment. |
+| fr-009-zstd-size-limits-segmentation-maxframebytes | Yes | T021, T022, T027, T032 | Tests exist; see A2 about explicit error-response implementation clarity. |
+| fr-010-server-validate-route-ingestion-backpressure-batching | Yes | T038, T042, T044, T047 | Session loop + batching + backpressure + integration test. |
+| fr-011-storage-interface-file-append-rotation-policy-documented | Yes | T034, T035, T036, T070 | Rotation policy now explicitly planned (T070). |
+| fr-012-observability-logs-counters-backpressure-events | Yes | T058, T059, T061 | Error responses + counters/logging. |
+| fr-013-tests-roundtrip-handshake-snapshot-ack-backpressure | Yes | T006, T007, T010, T013, T014, T047, T069 | Unit + integration + cross-language fixture. |
+
+### Constitution Alignment Issues
+- No direct conflicts found between constitution MUSTs and the current spec/plan/tasks. Plan explicitly calls out the constitution gates and aligns on Rust agent + .NET Linux server + deterministic tests.
+
+### Unmapped Tasks (no direct FR mapping)
+These are still valid, but they’re “project workflow / docs hygiene” rather than a single requirement:
+- T001, T002, T003 (baseline + quickstart dev note + research summary).
+
+### Metrics
+- Total Requirements: 13
+- Total Tasks: 71
+- Coverage %: 100% (13/13 requirements have ≥1 task)
+- Ambiguity Count: 0 (in spec/plan/tasks; no TODO/TKTK placeholders found there)
+- Duplication Count: 0 (no near-duplicate FRs detected in the scanned sections)
+- Critical Issues Count: 0
+
+## Next Actions
+- You can proceed to implementation; the remaining concerns are MED/LOW polish around task traceability and making “maxFrameBytes violation → explicit error response” unmistakably covered (A2).
+- If you want, I can suggest concrete edits to address the top 2 issues (A1/A2) in spec/plan/tasks (read-only here until you approve).
+
+User: A1 - annotate task with FR-*
+A2, A3 - fix according to recommendation. A3 - today, 2025-01-06
+
+GitHub Copilot: Plan: (1) Patch tasks list to add FR-* traceability tags and make max-frame “explicit error response” unambiguous. (2) Patch constitution to set Ratified date to 2025-01-06. (3) Quick sanity check of the edited sections.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - << 'PY'
+import re, pathlib
+p = pathlib.Path('specs/001-protocol-messaging/tasks.md')
+lines = p.read_text().splitlines()
+# Ensure every task line now has a trailing mapping paren
+task_re = re.compile(r'^\s*- \[[ xX]\] (T\d{3})\b')
+missing=[]
+for i,l in enumerate(lines, start=1):
+    if task_re.match(l):
+        if not re.search(r'\((FR-\d{3}|SC-\d{3}|Meta)', l):
+            missing.append((i,l))
+print('TASK_LINES', sum(1 for l in lines if task_re.match(l)))
+print('MISSING_MAPPING', len(missing))
+if missing:
+    for i,l in missing[:20]:
+        print(i, l)
+PY
+
+**Done**
+- Annotated every task line in tasks.md with a trailing mapping: `(FR-###)` where applicable, otherwise `(Meta)` or `(SC-001, SC-003, SC-004)` for the perf verification task.
+- Made the “maxFrameBytes violation → explicit Error response” requirement unambiguous by updating T005 and T058 in tasks.md.
+- Set the constitution ratification date to `2025-01-06` in constitution.md.
+
+**Quick validation**
+- Verified all 71 task checklist lines now include an FR/SC/Meta annotation (0 missing).
+
+Made changes.
