@@ -19,6 +19,8 @@ Implement and validate a compact, versioned binary protocol shared by the Rust a
 **Constraints**: At-least-once snapshot delivery with server de-dupe by `messageId`; handshake negotiates highest mutually supported protocol version; optional zstd compression (level 3) via capability flag; oversized all-process snapshots are segmented (common `snapshotId`, part index/count) and each part is acked; backpressure is expressed as `throttleDelayMs` (milliseconds); plaintext transport is local/dev only (no production plaintext)  
 **Scale/Scope**: Support 1,000 concurrent agent sessions; protocol evolution must be backward compatible via optional fields and versioning
 
+**Ingestion Note**: Server persistence SHOULD support batching (flush by `maxBatchSize` or `maxBatchDelayMs`) and use queue/buffer depth to drive backpressure (`throttleDelayMs`).
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*

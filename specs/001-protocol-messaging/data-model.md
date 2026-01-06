@@ -3,7 +3,7 @@
 ## Entities
 
 ### ProtocolEnvelope
-- Fields: `version` (u16), `message_type` (u8 discriminant 1–7), `length` (u32), `timestamp_utc` (i64), `agent_id` (string/uuid), `platform` (enum: windows, linux), `capabilities` (bit flags: compression, all_processes).
+- Fields: `version` (u16), `message_type` (u8 discriminant 1–7), `timestamp_utc` (i64), `agent_id` (string/uuid), `platform` (enum: windows, linux), `capabilities` (bit flags: compression, all_processes).
 - Relationships: Wraps one payload (Handshake, Snapshot, Heartbeat, Backpressure, Ack, Error).
 - Validation: Length matches payload bytes; message_type within known range.
 

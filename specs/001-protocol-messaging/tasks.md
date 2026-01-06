@@ -79,6 +79,8 @@ description: "Task list for Binary Protocol & IO Core"
 - [ ] T040 [US1] Implement server snapshot reassembly buffer keyed by snapshotId and persist only after full reassembly in server/Protocol/SessionHandler.cs
 - [ ] T041 [US1] Implement ack-per-part behavior and nack/error responses on failures in server/Protocol/SessionHandler.cs
 - [ ] T042 [US1] Implement throttleDelayMs backpressure emission when server-side buffers exceed threshold in server/Protocol/SessionHandler.cs
+- [ ] T066 [US1] Implement snapshot persistence batching (flush by maxBatchSize/maxBatchDelayMs) before calling storage in server/Protocol/SessionHandler.cs
+- [ ] T067 [P] [US1] Add tests for batching flush-by-size and flush-by-time behavior in server/Tests/Protocol/SessionHandlerTests.cs
 - [ ] T043 [US1] Implement a minimal Rust agent sender that connects, handshakes, sends snapshots, and retries until ack (timeout/disconnect) in agent/src/main.rs
 - [ ] T044 [US1] Verify retry/backoff defaults are documented in specs/001-protocol-messaging/quickstart.md and align wording with spec
 - [ ] T045 [US1] Add an in-process server session integration test (handshake→segmented snapshot→persist) using in-memory streams and fake storage in server/Tests/Protocol/SessionHandlerTests.cs

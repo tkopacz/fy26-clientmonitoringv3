@@ -25,6 +25,9 @@ memory, and top processes (or all processes when requested) and writes
 them through the storage interface (initially append-to-file) without
 drops.
 
+"Without drops" means snapshots are not permanently lost; duplicates may
+occur due to at-least-once retry and are de-duplicated by `messageId`.
+
 **Why this priority**: Core value is reliable telemetry delivery; no
 other functionality matters if ingest fails.
 
@@ -123,20 +126,22 @@ increments error counters, and both remain alive.
   explicit error; unknown optional fields MUST be safely ignored or
   recorded without failing the session.
 - **FR-004**: Handshake MUST include agent identity (instance id, OS
-  type, agent version), protocol version, and capabilities (supports
-  all-process option, compression if allowed) and receive server ack
-  before snapshots are accepted.
+  type, agent version), supported protocol version range (min/max), and
+  capabilities (supports all-process option, compression if allowed) and
+  receive server ack before snapshots are accepted.
 - **FR-005**: Snapshots MUST include sampling window start/end,
-  aggregated CPU/memory, and per-process entries (pid, name, cpu%, mem%/
-  rss, optional command line when permitted by platform); ordering or
-  truncation/segmentation rules MUST be defined when payload exceeds
-  size targets.
+  aggregated CPU and memory (used bytes and total bytes), and per-process
+  entries (pid, name, cpu%, mem%/rss, optional command line when
+  permitted by platform); ordering or truncation/segmentation rules MUST
+  be defined when payload exceeds size targets.
 - **FR-006**: Transport sessions MUST include keepalive/heartbeat and
   backpressure signaling so the server can slow senders without
   disconnects; backpressure MUST be expressed as `throttleDelayMs`
   (unsigned integer milliseconds; 0 = no throttle) that the agent applies
   to its snapshot send rate. The agent MUST enforce
   `effectiveIntervalMs = max(configuredSnapshotIntervalMs, throttleDelayMs)`.
+  - Backpressure MAY include a short, human-readable reason string for
+    logging/diagnostics.
 - **FR-007**: Reliability semantics MUST implement at-least-once
   delivery for snapshots: snapshot messages include unique message ids
   for correlation and de-duplication; the agent MUST retry on timeout or
@@ -173,6 +178,13 @@ increments error counters, and both remain alive.
 - **FR-010**: The server MUST decode, validate, and route messages
   through an ingestion pipeline that applies backpressure, batching, and
   validation before invoking the storage interface.
+  - Batching MUST be supported for storage writes: the server MAY buffer
+    decoded snapshots and append them in batches, flushing when either
+    `maxBatchSize` is reached or `maxBatchDelayMs` elapses (both
+    configurable).
+  - Backpressure decisions SHOULD be based on the server-side queue/buffer
+    depth (e.g., when buffered snapshots exceed a threshold, emit
+    `throttleDelayMs`).
 - **FR-011**: The storage layer MUST be accessed via an interface;
   initial implementation appends decoded records to a file with a
   documented rotation policy; business logic cannot depend on file I/O.

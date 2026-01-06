@@ -5,6 +5,9 @@ info:
   description: |
     Binary frame ingest surface used for interoperability testing and diagnostics.
     Frames are length-prefixed and include an explicit message type discriminant (1–7).
+    NOTE: This OpenAPI document is for diagnostics/interoperability reference only.
+    Implementing an HTTP ingest endpoint is out of scope for this feature unless
+    explicitly added as a requirement.
 servers:
   - url: https://localhost:8443
 paths:
@@ -38,14 +41,11 @@ components:
         messageType:
           type: integer
           format: int32
-          description: 1=Handshake, 2=HandshakeAck, 3=Snapshot, 4=Heartbeat, 5=Backpressure, 6=Ack, 7=Error
+          description: 1=Handshake, 2=HandshakeAck, 3=Heartbeat, 4=Snapshot, 5=Ack, 6=Backpressure, 7=Error
         messageId:
           type: integer
           format: int64
           description: Unique per frame/part; used for acking and server de-duplication.
-        length:
-          type: integer
-          format: int32
         timestampUtc:
           type: integer
           format: int64
@@ -100,10 +100,10 @@ components:
     Backpressure:
       type: object
       properties:
-        throttleLevel:
+        throttleDelayMs:
           type: integer
           format: int32
-          description: Numeric throttle/delay level the agent applies to its send rate.
+          description: Throttle delay in milliseconds the agent applies to its snapshot send rate (0 = no throttle).
         reason:
           type: string
         timestampUtc:
