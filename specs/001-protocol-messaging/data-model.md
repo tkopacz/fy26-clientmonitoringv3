@@ -13,7 +13,8 @@
 - State: Must precede snapshots; acknowledged by server.
 
 ### Snapshot
-- Fields: `window_start` (i64), `window_end` (i64), `cpu_total_pct` (f32), `mem_used_bytes` (u64), `mem_total_bytes` (u64), `processes` (list of ProcessSample), `truncated` (bool), `compression_applied` (bool).
+- Fields: `snapshot_id` (u64 or uuid), `window_start` (i64), `window_end` (i64), `cpu_total_pct` (f32), `mem_used_bytes` (u64), `mem_total_bytes` (u64), `processes` (list of ProcessSample), `compression_applied` (bool).
+- Segmentation fields (only when snapshot is segmented): `part_index` (u16, 0-based), `part_count` (u16, total parts).
 - Relationships: Contains many ProcessSample entries.
 - Validation: window_end >= window_start; process count > 0; totals consistent.
 - State: Sent after successful handshake; may be throttled by backpressure.
@@ -27,8 +28,8 @@
 - Validation: none beyond schema; lightweight keepalive.
 
 ### Backpressure
-- Fields: `level` (enum: none|reduce|pause), `reason` (string), `timestamp_utc` (i64).
-- Validation: level known; reason optional text length cap (e.g., 256 chars).
+- Fields: `throttle_level` (u16), `reason` (string), `timestamp_utc` (i64).
+- Validation: throttle_level within a configured range; reason optional text length cap (e.g., 256 chars).
 
 ### Ack
 - Fields: `message_id` (u64), `status` (enum: ok|error), `error_code` (optional string), `timestamp_utc` (i64).
@@ -40,5 +41,10 @@
 
 ## State Transitions
 - Handshake → (Ack) → Snapshot* → (Ack/Backpressure) → Heartbeat as keepalive.
-- Backpressure level dictates snapshot send rate; pause halts snapshots until lifted.
+- Backpressure throttle level dictates snapshot send rate.
 - Errors do not close session by default; agent may reconnect on repeated errors.
+
+## Segmentation & Acks
+- Each snapshot part is sent as its own message/frame with a unique `message_id` (acked individually).
+- All parts of a segmented snapshot share the same `snapshot_id` and include `part_index`/`part_count`.
+- Server persists the snapshot once after full reassembly; server de-dupes on `message_id`.

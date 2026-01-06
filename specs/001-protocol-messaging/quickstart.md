@@ -26,4 +26,4 @@
 ## Notes
 - Ensure `MessageType` discriminants remain aligned (1–7) across Rust and .NET when modifying protocol.rs or decoder logic.
 - Keep the storage interface contract intact; append-to-file is the reference implementation.
-- Backpressure and heartbeat semantics should remain stable across protocol version bumps.
+- Backpressure uses a throttle level and segmented snapshot parts are acked individually; keep these semantics stable across protocol version bumps.

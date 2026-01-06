@@ -39,6 +39,10 @@ components:
           type: integer
           format: int32
           description: 1=Handshake, 2=HandshakeAck, 3=Snapshot, 4=Heartbeat, 5=Backpressure, 6=Ack, 7=Error
+        messageId:
+          type: integer
+          format: int64
+          description: Unique per frame/part; used for acking and server de-duplication.
         length:
           type: integer
           format: int32
@@ -60,6 +64,18 @@ components:
     Snapshot:
       type: object
       properties:
+        snapshotId:
+          type: integer
+          format: int64
+          description: Common id across segmented snapshot parts.
+        partIndex:
+          type: integer
+          format: int32
+          description: 0-based part index when segmented.
+        partCount:
+          type: integer
+          format: int32
+          description: Total parts when segmented.
         windowStart:
           type: integer
           format: int64
@@ -75,14 +91,24 @@ components:
         memTotalBytes:
           type: integer
           format: int64
-        truncated:
-          type: boolean
         compressionApplied:
           type: boolean
         processes:
           type: array
           items:
             $ref: '#/components/schemas/ProcessSample'
+    Backpressure:
+      type: object
+      properties:
+        throttleLevel:
+          type: integer
+          format: int32
+          description: Numeric throttle/delay level the agent applies to its send rate.
+        reason:
+          type: string
+        timestampUtc:
+          type: integer
+          format: int64
     ProcessSample:
       type: object
       properties:
