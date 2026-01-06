@@ -145,6 +145,8 @@ description: "Task list for Binary Protocol & IO Core"
 - [ ] T067 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments
 - [ ] T068 [P] Add/verify intent + invariant comments for protocol framing/codec/session handling in agent/src/protocol.rs, server/Protocol/FrameCodec.cs, and server/Protocol/SessionHandler.cs
 - [ ] T069 [P] Add a cross-language fixture interoperability test (Rust encodes → .NET decodes) in agent/tests/protocol_tests.rs and server/Tests/Protocol/InteropFixtureTests.cs
+- [ ] T070 Document the file storage rotation policy + configuration surface in specs/001-protocol-messaging/quickstart.md (ensure matches server/Storage/FileStorageWriter.cs behavior)
+- [ ] T071 Run a perf/scale smoke verification for SC-001/SC-003/SC-004 and record results + methodology in specs/001-protocol-messaging/research.md
 
 ---
 

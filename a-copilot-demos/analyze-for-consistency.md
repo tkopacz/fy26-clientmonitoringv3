@@ -1920,3 +1920,93 @@ Implemented the remediation set you approved.
 If you want, I can re-run the consistency analysis one more time now—this should clear the previously reported D1/I1/U1/I3 items.
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: I’ll re-run the Speckit prereq check, re-capture current line numbers, then produce an updated consistency/coverage report (read-only).
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '1,280p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/plan.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '1,160p'
+
+Searched for regex `TODO\(|TKTK|\?\?\?|<placeholder>` (`**/specs/001-protocol-messaging/{spec,plan,tasks}.md`), no results
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/contracts/protocol-openapi.yaml | sed -n '15,40p'
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| G1 | Coverage Gap | MEDIUM | spec.md, constitution.md, tasks.md | Perf/scale targets exist (SC-001/SC-003/SC-004 + constitution throughput expectations) but tasks don’t include any explicit measurement/verification step beyond “run tests”. | Add one minimal “record measurements” task (even manual) for SC-001/SC-003/SC-004, or explicitly declare these targets as “post-MVP validation”. |
+| U1 | Underspecification | MEDIUM | spec.md, tasks.md | FR-011 requires a “documented rotation policy”, but tasks only cover storage interface semantics and error propagation; there’s no explicit task to document/verify rotation policy. | Add a small doc task to document the rotation policy (where configured + behavior), or add a note that rotation policy documentation already exists elsewhere in repo and link it from quickstart/spec. |
+| I1 | Inconsistency | LOW | spec.md, data-model.md, protocol-openapi.yaml | Timestamp naming differs (`timestampUtc` vs `timestamp_utc` vs `timestampUtc` in OpenAPI). This looks like convention drift rather than semantic mismatch, but it’s easy to misread. | Add a one-line “naming conventions” note (snake_case in docs/model vs camelCase in examples/contracts) to prevent confusion. |
+
+## Coverage Summary Table
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| agent-collects-cpu-mem-topn-allprocess | Yes | T023–T025 | Default `topN=100` is now explicit in spec. |
+| protocol-framing-envelope-payload-schemas | Yes | T004–T010, T005 | CRC32 framing and envelope `messageId`/timestamp are covered. |
+| version-negotiation-and-optional-fields | Yes | T033, T048–T054, T051–T052 | Cross-language fixture is explicitly tasked (T069). |
+| handshake-identity-capabilities-gating | Yes | T030–T033, T038, T045 | Covered. |
+| snapshot-required-fields-and-oversize-rules | Yes | T008–T010, T026–T029 | Segmentation and caps covered. |
+| heartbeat-and-backpressure-throttleDelayMs | Yes | T011–T014, T056–T057, T060, T044 | Covered. |
+| at-least-once-retry-and-server-dedupe | Yes | T017, T020, T039, T045, T047 | ID semantics now canonical (16-byte opaque). |
+| plaintext-dev-only-and-prod-guardrails | Yes | T062, T064–T065 | Covered. |
+| compression-size-limits-and-segmentation | Yes | T021–T022, T026–T032, T040–T041 | Covered. |
+| server-ingestion-pipeline-batching-backpressure | Yes | T038, T042–T044, T043 | Covered. |
+| storage-interface-and-file-append | Yes | T034–T036, T019 | Rotation policy documentation is the remaining gap (U1). |
+| observability-logs-and-counters | Yes | T059, T061 | Covered. |
+| tests-unit-and-combination-flows | Yes | Phase 2 tests + T047 + T069 | Constitution-aligned. |
+
+## Constitution Alignment Issues
+- No MUST conflicts detected.
+- Test discipline and comment-quality expectations are represented by tasks (notably T068, T069).
+
+## Unmapped Tasks
+These are meta/project hygiene tasks rather than single-FR coverage (fine):
+- T001, T002, T003, T046, T066, T067, T068, T069
+
+## Metrics
+- Total Requirements (FR-*): 13  
+- Total Tasks: 69  
+- Coverage % (requirements with ≥1 task): 100%  
+- Ambiguity Count: 0  
+- Duplication Count: 0  
+- Critical Issues Count: 0  
+
+## Next Actions
+- If you want to tighten the docs before implementation: address G1 and U1 (both MED).
+- Otherwise you’re in good shape to proceed to code alignment work.
+
+Want me to propose concrete remediation edits (exact patches) for G1 (add perf verification task) and U1 (rotation policy documentation task + link location)?
+
+User: address G1 and U1 (both MED).
+
+GitHub Copilot: I’ll quickly check whether a rotation policy section already exists, then I’ll update tasks.md to add two focused Phase 6 tasks: one for perf/scale verification (G1) and one for documenting the file rotation policy (U1).
+
+Read [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messaging/quickstart.md)
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Checked [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messaging/tasks.md), no problems found
+
+- Added two Phase 6 tasks to close the remaining MED gaps:
+  - G1: T071 adds an explicit perf/scale smoke verification + recorded results for SC-001/SC-003/SC-004 in research.md.
+  - U1: T070 adds an explicit task to document the file rotation policy + config surface in quickstart.md, aligned with server behavior.
+
+Changes are in tasks.md.
+
+Made changes.
