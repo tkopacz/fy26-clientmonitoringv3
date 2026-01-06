@@ -977,3 +977,261 @@ Implemented the accepted recommendations (1–5) across the feature docs and tas
 If you want, I can run run-all-tests.sh next to establish the new “baseline failures” for task T001.
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: I’ll rerun the speckit prerequisites check, then re-scan spec.md, plan.md, and the updated tasks.md (with line-number references) to produce an updated consistency/coverage report after the edits we just made.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/plan.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '260,520p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/data-model.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/research.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/quickstart.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "TODO\(|TKTK|<placeholder>|\?\?\?" specs/001-protocol-messaging | cat
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| I1 | Inconsistency | HIGH | plan.md | Plan summary still says “throttle-level backpressure signaling” but spec is now `throttleDelayMs` (milliseconds). | Update plan summary wording to match `throttleDelayMs` (ms) so plan/spec don’t drift. |
+| I2 | Inconsistency | MEDIUM | tasks.md | Tasks still say “throttle-level semantics” in Phase 2 even though the feature has been defined as `throttleDelayMs` (ms). | Rename task wording to `throttleDelayMs` (ms) for consistency. |
+| U1 | Underspecification | HIGH | spec.md, data-model.md, tasks.md | Handshake “version negotiation” is required, but the data model only shows a single `protocol_version`. Tasks introduce `minVersion/maxVersion` without the docs explicitly defining that as the negotiation mechanism. | Pick and document a single handshake representation for negotiation (single version vs range vs list) and align spec + data model to it. |
+| U2 | Underspecification | MEDIUM | spec.md, tasks.md | FR-010 promises “backpressure, batching, validation”, but tasks focus on per-connection session handling; batching is not explicitly designed or tasked. | Either (a) scope FR-010 MVP to “validation + backpressure only” or (b) add explicit batching tasks (queueing, flush policy, tests). |
+| CV1 | Coverage Gap | MEDIUM | spec.md, tasks.md | SC-001..SC-004 are measurable but there are no explicit tasks to validate latency/payload/agent overhead/1000 sessions (beyond “run quickstart/tests”). | Add lightweight validation tasks (even manual checklist + measurement capture) or explicitly downgrade SCs to “targets”. |
+| D1 | Duplication / Staleness | LOW | tasks.md, tasks.md, quickstart.md | Some tasks are already satisfied by the doc edits you just made (e.g., retry defaults and plaintext dev-only section exist in quickstart). | Mark those tasks as completed (or remove them) to keep tasks.md reflective of remaining work. |
+
+## Coverage Summary Table
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| agent-collects-cpu-memory-processes | Yes | T023–T025 | New coverage added. |
+| define-versioned-binary-protocol | Yes | T004–T013, T030–T032 | Core framing/codec + compression work planned. |
+| negotiate-version-and-ignore-optional-fields | Yes | T046–T052 | Negotiation tests + v1.1 optional field handling. |
+| handshake-includes-identity-and-capabilities | Partial | T004–T005, T030–T033 | Capability flags are implied; negotiation field representation still underspecified in docs. |
+| snapshot-schema-window-aggregates-process-entries | Yes | T008–T010, T015–T018 | Schema alignment + segmentation tests. |
+| heartbeat-and-throttle-backpressure | Yes | T011–T014, T042, T054–T055, T058 | Semantics defined as ms in spec/quickstart. |
+| at-least-once-snapshots-with-dedupe | Yes | T017, T020, T039, T043 | Retry/backoff is now defined in spec; tests planned. |
+| plaintext-dev-only-prod-prohibited | Yes | T060–T062 | Docs already updated; runtime guardrail still pending. |
+| compression-and-segmentation-and-reassembly | Yes | T021–T022, T026–T032, T040–T041 | Compression + max frame enforcement now covered. |
+| server-ingestion-pipeline-batching-validation | Partial | T038, T056 | Validation/backpressure covered; batching still missing. |
+| storage-interface-and-file-append-rotation | Partial | T034–T036 | Rotation policy not explicitly tasked. |
+| observability-logs-counters | Yes | T056–T059 | Planned. |
+| tests-unit-and-integration-flows | Yes | Broad coverage | Strong overall. |
+| sc-handshake-latency | No |  | No explicit measurement task. |
+| sc-payload-size-and-decode-rate | No |  | No explicit measurement task. |
+| sc-agent-overhead | No |  | No explicit measurement task. |
+| sc-1000-sessions-failure-rate | No |  | No explicit measurement task. |
+
+## Constitution Alignment Issues
+- No constitution MUST conflicts detected.
+
+## Unmapped Tasks
+- T001, T002, T003, T063–T065 are workflow/docs tasks (acceptable).
+
+## Metrics
+- Total Requirements (FR + SC): 17
+- Total Tasks: 65
+- Coverage % (requirements with ≥1 task): 76.5% (13/17)
+- Ambiguity Count: 0 (the biggest prior ambiguities—retry policy, size caps, throttle units—are now specified)
+- Underspecification Count: 2 (handshake negotiation field representation; batching scope)
+- Duplication/Staleness Count: 1
+- Critical Issues Count: 0
+
+## Next Actions
+- Fix HIGH drift: update plan summary to say `throttleDelayMs` (ms) (plan.md).
+- Decide and document the handshake version negotiation wire representation (single version vs range/list), then align data-model.md accordingly.
+- Optional but recommended: add explicit SC measurement tasks (or relax SC wording) to close the remaining coverage gap.
+
+Want me to proceed with those remaining doc/task consistency cleanups (plan summary wording + handshake data-model alignment + task staleness marks)?
+
+User: proceed with those remaining doc/task consistency cleanups (plan summary wording + handshake data-model alignment + task staleness marks)?
+
+GitHub Copilot: I’m going to make three tight edits: (1) fix the remaining “throttle-level” wording drift in the plan/tasks, (2) align the handshake data model + spec text to the same version-negotiation wire shape (min/max range + server-chosen version), and (3) de-stale tasks that are already satisfied by the doc updates by converting them to “verify/confirm” tasks (keeping IDs/format intact).
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && python3 - <<'PY'
+import re
+path='specs/001-protocol-messaging/tasks.md'
+ids=[]
+with open(path,'r',encoding='utf-8') as f:
+    for line in f:
+        m=re.match(r"^- \[ \] (T\d{3})\b", line)
+        if m:
+            ids.append(int(m.group(1)[1:]))
+print('count',len(ids),'range',min(ids),max(ids))
+missing=[i for i in range(min(ids),max(ids)+1) if i not in set(ids)]
+dupes=[x for x in set(ids) if ids.count(x)>1]
+print('missing',missing)
+print('dupes',sorted(dupes))
+PY
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "throttle-level|throttle level\b" specs/001-protocol-messaging | cat
+
+Completed the requested doc/task consistency cleanups.
+
+- Updated plan wording to match the spec’s `throttleDelayMs` (ms) phrasing in plan.md.
+- Updated Phase 2 task wording to use `throttleDelayMs` (ms) consistently in tasks.md.
+- Aligned handshake version negotiation representation:
+  - Spec now explicitly states handshake communicates supported version range (min/max) and server replies with chosen version in spec.md.
+  - Data model `Handshake` now uses `min_version`/`max_version` and adds `HandshakeAck` with `chosen_version` in data-model.md.
+- Marked two stale tasks as “Verify …” since the docs already contain the required sections, without breaking the strict task-ID format:
+  - T044 and T060 in tasks.md.
+
+Validation:
+- Task IDs remain sequential T001–T065 (no gaps/dupes).
+- No remaining “throttle level/throttle-level” drift in the feature docs.
+
+If you want, I can re-run the consistency report against code next (searching Rust/.NET sources for remaining drift like `throttle_level`, `protocol_version` handshake fields, etc.).
+
+Made changes.
+
+User:  re-run the consistency report against code next (searching Rust/.NET sources for remaining drift like throttle_level, protocol_version handshake fields, etc.).
+
+GitHub Copilot: I’ll scan the Rust and .NET source for key spec terms (throttleDelayMs, throttle_level, min/max version handshake fields, messageId/message_id) and then summarize any doc↔code drift with exact file/line links.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "throttle_level|throttleDelayMs|throttle_delay_ms|throttleDelay" agent/src server/Protocol server/Storage server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "min_version|max_version|minVersion|maxVersion|protocol_version|protocolVersion|chosen_version|chosenVersion" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "messageId|message_id|snapshotId|snapshot_id|partIndex|part_index|partCount|part_count" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "zstd|Zstd|compression|compress" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "Backpressure|backpressure" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "HandshakeAck|handshake_ack|Handshake\b" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "snapshot_id|snapshotId|part_index|partIndex|part_count|partCount|segment" agent/src server/Protocol server/Tests agent/tests | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "MAX_.*frame|max.*frame|256 KB|1048576|65536|target.*64" agent/src server/Protocol | head -n 200
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba agent/src/protocol.rs | sed -n '90,160p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba agent/src/protocol.rs | sed -n '160,220p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba agent/src/protocol.rs | sed -n '240,320p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba server/Protocol/Messages.cs | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba server/Protocol/FrameCodec.cs | sed -n '1,120p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba server/Protocol/FrameCodec.cs | sed -n '240,380p'
+
+## Code Consistency Report (Docs ↔ Rust/.NET Implementation)
+
+This compares the updated feature docs under 001-protocol-messaging against the current Rust/.NET code. The main outcome: the docs are now stricter/more explicit than the implementation, and the remaining drift lines up with tasks (especially Phase 2 + US1).
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| C1 | Doc↔Code Drift | HIGH | spec.md, protocol.rs, Messages.cs, FrameCodec.cs | Docs define backpressure as `throttleDelayMs` (milliseconds), but code implements **level + optional pause_secs**. | Implement `throttleDelayMs` end-to-end and update encoding/decoding + tests (tracks tasks T011–T014, T042, T055). |
+| C2 | Doc↔Code Drift | HIGH | spec.md, data-model.md, protocol.rs, protocol.rs, FrameCodec.cs | Docs specify handshake version negotiation via **min/max supported range** + server returns chosen version, but code only sends a single `protocol_version` (major/minor). | Update handshake payload to min/max range and implement negotiation + HandshakeAck chosen version (tracks tasks T033, T048–T050). |
+| C3 | Doc↔Code Drift | HIGH | spec.md, protocol.rs, FrameCodec.cs | Docs define `maxFrameBytes = 1048576` (1 MiB) hard cap, but code enforces **256 KiB** max frame size (`MAX_FRAME_SIZE` / `MaxFrameSize`). | Decide whether to change code to 1 MiB (per spec) or revise spec back to 256 KiB. If keeping spec, update both constants together and tests (tracks tasks T022, T063). |
+| C4 | Missing Feature | HIGH | spec.md, protocol.rs, Messages.cs | Docs require segmented snapshots (`snapshotId`, `partIndex`, `partCount`) with reassembly, but SnapshotPayload currently only has a `truncated` flag and no segmentation fields. | Add segmentation fields and implement split/reassemble + per-part ack semantics (tracks tasks T015–T019, T026–T032, T040–T041). |
+| C5 | Doc↔Code Drift | HIGH | data-model.md, protocol.rs, Messages.cs | Docs define `HandshakeAck` as carrying chosen version + compression selection, but code’s `HandshakeAck` has **no payload**. | Add `HandshakeAck` payload and wire encode/decode (tracks tasks T030–T032, T049–T050). |
+| C6 | Stale Comment | MEDIUM | Messages.cs | .NET protocol header comment still claims “At-most-once delivery semantics”, but spec is at-least-once snapshots. | Fix doc comments as part of cleanup task T065 (already tracked). |
+
+### Notes / Interpretation
+- Compression exists in code today (zstd level 3 based on `Envelope.Compressed`) in protocol.rs and FrameCodec.cs, but **docs now require “negotiated via handshake + server selection”**—that handshake negotiation piece is not implemented yet (ties to C2/C5).
+- The new doc constants (`targetSnapshotBytes=65536`, `maxFrameBytes=1048576`) do not match the current code constants (`TARGET_FRAME_SIZE=64 KiB`, `MAX_FRAME_SIZE=256 KiB`). The 64 KiB target already matches; the max frame cap does not.
+
+## Metrics (Docs ↔ Code)
+- High-severity drifts found: 5
+- Medium-severity drifts found: 1
+- Drift areas: backpressure semantics, handshake negotiation fields, handshake ack payload, snapshot segmentation, max frame cap
+
+## Next Actions
+- If the spec is authoritative (recommended): implement tasks Phase 2 (T011–T014) then US1 (T026–T045) to eliminate C1/C4/C5 and most of C2.
+- Make an explicit decision on max frame cap (C3): keep 1 MiB (update code) vs keep 256 KiB (revise spec). Right now doc+code disagree.
+
+If you tell me which max frame cap you want (256 KiB vs 1 MiB), I can update either the spec or the code to remove that inconsistency and keep everything aligned.
+
+User: max frame cap should be 256 KiB
+
+GitHub Copilot: I’ll update the feature docs to make `maxFrameBytes` match the implementation (256 KiB = 262144 bytes), then re-run a quick scan to ensure nothing still references the old 1 MiB value.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && grep -RIn --line-number -E "1048576|1 MiB hard cap|maxFrameBytes = 1048576" specs/001-protocol-messaging | cat
+
+Updated the docs to match your decision: max frame cap is now 256 KiB.
+
+- Spec: `maxFrameBytes = 262144` (256 KiB) in spec.md
+- Research: size guardrails updated in research.md
+- Quickstart defaults: updated in quickstart.md
+
+Validation:
+- Confirmed no remaining `1048576` / “1 MiB hard cap” references in 001-protocol-messaging.
+
+Made changes.

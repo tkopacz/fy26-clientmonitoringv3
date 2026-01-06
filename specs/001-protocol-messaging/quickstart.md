@@ -37,4 +37,4 @@
 ## Defaults (deterministic)
 
 - Retry policy: `ackTimeoutMs = 2000`; exponential backoff 500 → 30000ms; no jitter.
-- Size guardrails: `targetSnapshotBytes = 65536` (64 KiB typical payload target); `maxFrameBytes = 1048576` (1 MiB hard cap).
+- Size guardrails: `targetSnapshotBytes = 65536` (64 KiB typical payload target); `maxFrameBytes = 262144` (256 KiB hard cap).

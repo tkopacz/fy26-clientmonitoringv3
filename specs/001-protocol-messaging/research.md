@@ -21,7 +21,7 @@
 - Alternatives considered: Higher levels (too slow); gzip (incompatible with current code paths).
 
 ## Snapshot size guardrails
-- Decision: Retain 64 KiB `targetSnapshotBytes = 65536` for typical snapshot payloads and enforce `maxFrameBytes = 1048576` (1 MiB hard cap). If an all-process snapshot is still oversized after negotiated zstd compression, segment it into multiple parts that share a common `snapshotId` and include part index/count for reassembly.
+- Decision: Retain 64 KiB `targetSnapshotBytes = 65536` for typical snapshot payloads and enforce `maxFrameBytes = 262144` (256 KiB hard cap). If an all-process snapshot is still oversized after negotiated zstd compression, segment it into multiple parts that share a common `snapshotId` and include part index/count for reassembly.
 - Rationale: Preserves “all processes” functionality without silent data loss while keeping typical snapshots small.
 - Alternatives considered: Truncation only (drops process data); raising size limit (risks memory/backpressure); rejecting oversize (breaks “all processes” use case).
 

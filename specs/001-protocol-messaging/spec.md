@@ -158,7 +158,7 @@ increments error counters, and both remain alive.
 - **FR-009**: Payload size safeguards MUST apply zstd compression
   (level 3) when negotiated via capability flag. The protocol MUST define
   explicit size limits: `targetSnapshotBytes = 65536` (64 KiB) and
-  `maxFrameBytes = 1048576` (1 MiB hard cap).
+  `maxFrameBytes = 262144` (256 KiB hard cap).
   - If an all-process snapshot still exceeds `targetSnapshotBytes` after
     compression, it MUST be segmented into multiple snapshot parts that
     share a common snapshotId and include part index/part count so the
