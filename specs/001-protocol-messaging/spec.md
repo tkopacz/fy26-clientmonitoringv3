@@ -214,7 +214,6 @@ increments error counters, and both remain alive.
 ### Key Entities *(include if feature involves data)*
 
 - **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
-- **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
   message type, message id, and envelope metadata (per-message send time
   `timestampUtc` as UTC Unix milliseconds, platform, agent id).
 - **AgentIdentity**: Agent instance id, OS type, agent version,

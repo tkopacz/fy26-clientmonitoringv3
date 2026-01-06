@@ -24,7 +24,7 @@ description: "Task list for Binary Protocol & IO Core"
 
 **⚠️ CRITICAL**: No user story work should begin until this phase is complete.
 
-- [ ] T004 Define envelope metadata fields (agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs
+- [ ] T004 Define envelope metadata fields (messageId, agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs
 - [ ] T005 Update framing serialization/deserialization to include length prefix + CRC32 checksum validation and the updated envelope fields in agent/src/protocol.rs and server/Protocol/FrameCodec.cs
 - [ ] T006 [P] Update Rust protocol unit tests for envelope field round-trips in agent/tests/protocol_tests.rs
 - [ ] T007 [P] Update .NET protocol unit tests for envelope field round-trips in server/Tests/Protocol/ProtocolTests.cs
@@ -144,6 +144,7 @@ description: "Task list for Binary Protocol & IO Core"
 - [ ] T066 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes
 - [ ] T067 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments
 - [ ] T068 [P] Add/verify intent + invariant comments for protocol framing/codec/session handling in agent/src/protocol.rs, server/Protocol/FrameCodec.cs, and server/Protocol/SessionHandler.cs
+- [ ] T069 [P] Add a cross-language fixture interoperability test (Rust encodes → .NET decodes) in agent/tests/protocol_tests.rs and server/Tests/Protocol/InteropFixtureTests.cs
 
 ---
 

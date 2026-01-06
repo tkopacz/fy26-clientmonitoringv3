@@ -22,7 +22,7 @@ paths:
             schema:
               type: string
               format: binary
-            description: Length-prefixed frame with message_type discriminant 1–7 and payload encoded per schema.
+            description: Length-prefixed frame with CRC32 checksum, message_type discriminant 1–7, and payload encoded per schema.
       responses:
         '204':
           description: Frame accepted

@@ -1812,3 +1812,111 @@ Checked [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messa
 If you want, I can re-run the “project analysis for consistency” now that these remediation edits are in, to confirm those MED items are fully cleared.
 
 Made changes.
+
+User: Run a project analysis for consistency
+
+GitHub Copilot: I’m going to re-run the Speckit prerequisite check, then capture fresh line numbers for the updated spec/plan/tasks/data-model/contract so the consistency report can cite exact locations.
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/spec.md | sed -n '1,260p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/plan.md | sed -n '1,220p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/tasks.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/data-model.md | sed -n '1,240p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba specs/001-protocol-messaging/contracts/protocol-openapi.yaml | sed -n '1,220p'
+
+Ran terminal command: cd /home/tkopacz/fy26-clientmonitoringv3 && nl -ba .specify/memory/constitution.md | sed -n '1,140p'
+
+## Specification Analysis Report
+
+| ID | Category | Severity | Location(s) | Summary | Recommendation |
+|----|----------|----------|-------------|---------|----------------|
+| D1 | Duplication | HIGH | spec.md | `ProtocolEnvelope` is listed twice in “Key Entities” (duplicate bullet). | Remove the duplicate bullet so there is exactly one canonical `ProtocolEnvelope` entry. |
+| I1 | Inconsistency | MEDIUM | spec.md, protocol-openapi.yaml | Spec defines CRC32 in framing, but OpenAPI request description still describes only “Length-prefixed frame …” (responses mention checksum failure). | Update the OpenAPI request description line to mention checksum is present/validated, or explicitly mark checksum as “binary protocol only; HTTP reference omits details” (pick one). |
+| U1 | Underspecification | MEDIUM | spec.md, tasks.md | Spec makes `messageId` a required on-wire 16-byte identifier, but Phase 2 “define envelope fields” task doesn’t mention `messageId` (only agent id/platform/timestamp). | Amend the foundational tasks to explicitly include `messageId` in the envelope schema and add round-trip tests for it. |
+| I2 | Inconsistency | LOW | spec.md, data-model.md | Timestamp naming differs (`timestampUtc` vs `timestamp_utc`). This is probably intentional (language conventions), but it’s easy to misread as two different concepts. | Add a one-line “naming convention” note: snake_case in docs/model vs camelCase in examples/code, same semantic field. |
+| G1 | Coverage Gap | MEDIUM | spec.md, constitution.md, tasks.md | Perf/scale success criteria exist (2s p95, agent CPU/mem, 1000 sessions), but tasks don’t include any explicit measurement/verification step. | Add one minimal “record measurements” task (even manual) for SC-001/SC-003/SC-004, or explicitly declare them “out-of-scope for MVP implementation tasks”. |
+| I3 | Inconsistency | MEDIUM | plan.md, tasks.md | Plan commits to “fixture-based interoperability tests”, but tasks do not include an explicit cross-language fixture test task (only same-language unit tests + in-process server integration test). | Either add a dedicated fixture task (Rust encodes → .NET decodes and/or vice versa) or adjust the plan to remove the fixture claim. |
+
+## Coverage Summary Table
+
+| Requirement Key | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| agent-collects-cpu-mem-topn-allprocess | Yes | T023–T025 | Default `topN=100` now defined in spec. |
+| protocol-framing-envelope-payloads | Yes | T004–T010, T005 | Ensure envelope includes `messageId` (see U1). |
+| version-negotiation-optional-fields | Yes | T033, T048–T054, T051–T052 | Plan↔tasks fixture drift remains (I3). |
+| handshake-identity-capabilities-gating | Yes | T030–T033, T038, T045 | Good coverage. |
+| snapshot-fields-oversize-rules | Yes | T008–T010, T026–T029 | Segmentation covered. |
+| heartbeats-backpressure-throttleDelayMs | Yes | T011–T014, T044, T056–T057, T060 | Good coverage. |
+| at-least-once-retry-and-dedupe | Yes | T017, T020, T039, T045, T047 | Depends on correct `messageId` envelope modeling. |
+| plaintext-dev-only | Yes | T062, T064–T065 | Good coverage. |
+| compression-size-limits-segmentation | Yes | T021–T022, T026–T032, T040–T041 | Good coverage. |
+| server-pipeline-batching-backpressure | Yes | T038, T042–T044, T043 | Good coverage. |
+| storage-interface-file-append | Yes | T034–T036, T019 | Rotation policy doc may still need an explicit task if not elsewhere. |
+| observability-logs-counters | Yes | T059, T061 | Good coverage. |
+| tests-unit-and-combination | Yes | T006–T007, T010, T013–T014, T047, plus US2/US3 tests | Constitution-aligned. |
+
+## Constitution Alignment Issues
+- No direct MUST violations detected.
+- The “professional-grade comments” MUST is now explicitly represented by T068 in tasks.md.
+
+## Unmapped Tasks
+These are project/meta tasks rather than direct FR coverage (fine as-is):
+- T001, T002, T003, T046, T066, T067, T068
+
+## Metrics
+- Total Requirements (FR-*): 13
+- Total Tasks: 68
+- Coverage % (requirements with ≥1 task): 100%
+- Ambiguity Count: 0
+- Duplication Count: 1
+- Critical Issues Count: 0
+
+## Next Actions
+- Recommended before proceeding: fix D1 (duplicate `ProtocolEnvelope` bullet) and decide I3 (add fixture task vs adjust plan wording).
+- If you want me to propose concrete remediation edits for the top issues (D1, U1, I3), say the word and I’ll outline exact patches (still read-only until you explicitly approve edits).
+
+User: implement remediation; for I3 - Rust encodes → .NET decodes
+
+GitHub Copilot: I’m going to apply the agreed remediation: remove the duplicate `ProtocolEnvelope` bullet, tighten foundational tasks to include `messageId`, update the OpenAPI request description to mention checksum framing, and add an explicit cross-language fixture task (Rust encodes → .NET decodes) to match the plan.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Checked [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messaging/spec.md), [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messaging/tasks.md), [](file:///home/tkopacz/fy26-clientmonitoringv3/specs/001-protocol-messaging/contracts/protocol-openapi.yaml), no problems found
+
+Implemented the remediation set you approved.
+
+- D1: Removed the duplicate `ProtocolEnvelope` entry in spec.md.
+- U1 (tasks coverage): Updated T004 to explicitly include `messageId` in the envelope schema task in tasks.md.
+- I1: Updated the OpenAPI request body description to mention CRC32 checksum framing in protocol-openapi.yaml.
+- I3: Added an explicit cross-language fixture interoperability task for “Rust encodes → .NET decodes” as T069 in tasks.md.
+
+If you want, I can re-run the consistency analysis one more time now—this should clear the previously reported D1/I1/U1/I3 items.
+
+Made changes.
