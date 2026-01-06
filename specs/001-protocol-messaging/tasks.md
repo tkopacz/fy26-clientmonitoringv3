@@ -53,7 +53,7 @@ description: "Task list for Binary Protocol & IO Core"
 - [ ] T017 [P] [US1] Add failing tests for server snapshot de-dup by messageId in server/Tests/Protocol/ProtocolTests.cs
 - [ ] T018 [P] [US1] Add failing tests for server snapshot reassembly by snapshotId/partIndex/partCount in server/Tests/Protocol/ProtocolTests.cs
 - [ ] T019 [P] [US1] Add failing tests for storage error propagation (nack on append failure) in server/Tests/Storage/FileStorageTests.cs
-- [ ] T020 [P] [US1] Add deterministic tests asserting retry/backoff timing behavior in agent tests (agent/tests/protocol_tests.rs or new test file)
+- [ ] T020 [P] [US1] Add deterministic tests asserting retry/backoff timing behavior in agent/tests/retry_backoff_tests.rs
 - [ ] T021 [P] [US1] Add compression negotiation tests (on/off) and round-trip tests for compressed payloads in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs
 - [ ] T022 [P] [US1] Add `maxFrameBytes` enforcement tests (reject too-large frames) in agent tests and server/Tests/Protocol/ProtocolTests.cs
 
@@ -61,7 +61,7 @@ description: "Task list for Binary Protocol & IO Core"
 
 - [ ] T023 [P] [US1] Audit current agent collection coverage vs FR-001 (CPU, mem, top-N, all-process option) and document gaps in specs/001-protocol-messaging/research.md
 - [ ] T024 [P] [US1] Add/align agent collection APIs used by protocol sender (top-N + all-process) in agent/src/lib.rs (or a dedicated module) and wire into agent/src/main.rs
-- [ ] T025 [P] [US1] Add deterministic unit tests for collection result shaping (top-N selection, ordering, truncation determinism) in agent tests (agent/tests/protocol_tests.rs or new test file)
+- [ ] T025 [P] [US1] Add deterministic unit tests for collection result shaping (top-N selection, ordering, truncation determinism) in agent/tests/collection_tests.rs
 - [ ] T026 [US1] Add snapshot segmentation fields (snapshotId, partIndex, partCount) to SnapshotPayload in agent/src/protocol.rs
 - [ ] T027 [US1] Implement snapshot segmentation in agent encoder (split oversized all-process snapshots into parts) in agent/src/protocol.rs
 - [ ] T028 [US1] Add snapshot segmentation fields (snapshotId, partIndex, partCount) to SnapshotPayload in server/Protocol/Messages.cs
@@ -137,8 +137,8 @@ description: "Task list for Binary Protocol & IO Core"
 
 - [ ] T060 [P] Verify “Security: plaintext dev-only” section exists in specs/001-protocol-messaging/quickstart.md and align wording with spec
 - [ ] T061 Enforce a runtime guardrail: server refuses to start in plaintext mode unless an explicit opt-in is set (e.g., env var) in server/Program.cs
-- [ ] T062 [P] Add a test for the plaintext guardrail (startup/config test) in server/Tests (new test file)
-- [ ] T063 [P] Update protocol documentation consistency across specs/001-protocol-messaging/spec.md, specs/001-protocol-messaging/data-model.md, and specs/001-protocol-messaging/contracts/protocol-openapi.yaml
+- [ ] T062 [P] Add a test for the plaintext guardrail (startup/config test) in server/Tests/PlaintextGuardrailTests.cs
+- [ ] T063 [P] Align protocol docs and contract field names/discriminants in specs/001-protocol-messaging/spec.md and specs/001-protocol-messaging/contracts/protocol-openapi.yaml (MessageType mapping 1–7, Backpressure uses throttleDelayMs not throttleLevel)
 - [ ] T064 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes
 - [ ] T065 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments
 
