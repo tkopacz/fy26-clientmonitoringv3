@@ -1,14 +1,15 @@
 /// Binary protocol definitions and encoding for monitoring agent.
 ///
 /// This module implements the versioned binary protocol with:
-/// - Framing: length-prefix + message type
+/// - Framing: length-prefix + message + CRC32 checksum
 /// - Envelope: version, platform, timestamps, agent ID
 /// - zstd compression (level 3, negotiated)
-/// - At-most-once delivery semantics
+/// - At-least-once delivery semantics with retry and de-duplication
 
 use serde::de::Error as SerdeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::io::{self, Read, Write, Cursor};
+use crc32fast::Hasher;
 
 /// Protocol version (MAJOR.MINOR format).
 ///
@@ -184,8 +185,8 @@ pub struct BackpressureSignal {
 /// Message acknowledgment with status and optional error code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageAck {
-    /// ID of the message being acknowledged
-    pub message_id: u64,
+    /// ID of the message being acknowledged (opaque 16-byte identifier)
+    pub message_id: [u8; 16],
     /// Success flag
     pub success: bool,
     /// Optional error code if success=false
@@ -201,10 +202,14 @@ pub struct Envelope {
     pub version: ProtocolVersion,
     /// Message type
     pub message_type: MessageType,
-    /// Unique message ID for correlation
-    pub message_id: u64,
-    /// Timestamp when message was created (Unix epoch seconds)
-    pub timestamp_secs: i64,
+    /// Unique message ID for correlation (opaque 16-byte identifier)
+    pub message_id: [u8; 16],
+    /// Timestamp when message was created (UTC Unix epoch milliseconds)
+    pub timestamp_utc_ms: i64,
+    /// Agent instance identifier
+    pub agent_id: String,
+    /// Platform (OS type)
+    pub platform: OsType,
     /// True if payload is zstd-compressed
     pub compressed: bool,
 }
@@ -241,6 +246,8 @@ pub enum ProtocolError {
     IncompatibleVersion,
     #[error("Frame too large: {0} bytes (max {1})")]
     FrameTooLarge(usize, usize),
+    #[error("CRC32 checksum mismatch: expected {expected:#010x}, got {actual:#010x}")]
+    Crc32Mismatch { expected: u32, actual: u32 },
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
     #[error("Serialization error: {0}")]
@@ -268,32 +275,34 @@ pub const TARGET_FRAME_SIZE: usize = 64 * 1024;
 
 /// Wire format framing and encoding.
 ///
-/// Framing: [length: u32 big-endian][message bytes]
-/// Message bytes: bincode-encoded Message, optionally zstd-compressed
+/// Framing: [length: u32 big-endian][message bytes][crc32: u32 little-endian]
+/// Message bytes: custom-encoded Message, optionally zstd-compressed
 pub struct FrameCodec;
 
 impl FrameCodec {
     /// Encode a message into a framed byte buffer.
     ///
     /// Steps:
-    /// 1. Serialize message to bytes (bincode)
+    /// 1. Serialize message to bytes (custom format)
     /// 2. Compress if envelope.compressed=true (zstd level 3)
-    /// 3. Prepend 4-byte length (big-endian)
+    /// 3. Compute CRC32 checksum of body
+    /// 4. Build frame: [length:u32][body][crc32:u32]
     ///
     /// Returns: framed bytes ready to write to socket
     pub fn encode(message: &Message) -> Result<Vec<u8>, ProtocolError> {
         let mut body = Vec::with_capacity(128);
 
-        // Envelope header layout: multi-byte envelope fields (message_id, timestamp_secs) are encoded in
+        // Envelope header layout: multi-byte envelope fields (message_id, timestamp_utc_ms) are encoded in
         // little-endian; single-byte fields (version bytes, message type, compressed flag) have no
-        // endianness. The 4-byte frame length prefix is big-endian (see encode docs), while the envelope
-        // and payload multi-byte fields are little-endian. The .NET FrameCodec must read/write the same
-        // layout.
+        // endianness. The 4-byte frame length prefix and CRC32 suffix use big-endian and little-endian
+        // respectively. The .NET FrameCodec must read/write the same layout.
         body.push(message.envelope.version.major);
         body.push(message.envelope.version.minor);
         body.push(message.envelope.message_type.to_u8());
-        body.extend_from_slice(&message.envelope.message_id.to_le_bytes());
-        body.extend_from_slice(&message.envelope.timestamp_secs.to_le_bytes());
+        body.extend_from_slice(&message.envelope.message_id);
+        body.extend_from_slice(&message.envelope.timestamp_utc_ms.to_le_bytes());
+        write_string(&mut body, &message.envelope.agent_id);
+        body.push(message.envelope.platform as u8);
         body.push(if message.envelope.compressed { 1 } else { 0 });
 
         // Serialize payload based on message type
@@ -328,7 +337,7 @@ impl FrameCodec {
                 payload_bytes.push(if snapshot.truncated { 1 } else { 0 });
             }
             MessagePayload::Ack(ack) => {
-                payload_bytes.extend_from_slice(&ack.message_id.to_le_bytes());
+                payload_bytes.extend_from_slice(&ack.message_id);
                 payload_bytes.push(if ack.success { 1 } else { 0 });
                 write_optional_u32(&mut payload_bytes, ack.error_code);
             }
@@ -358,10 +367,16 @@ impl FrameCodec {
             return Err(ProtocolError::FrameTooLarge(body.len(), MAX_FRAME_SIZE));
         }
 
-        // Build frame: [length:u32][body]
-        let mut frame = Vec::with_capacity(4 + body.len());
+        // Compute CRC32 checksum of body
+        let mut hasher = Hasher::new();
+        hasher.update(&body);
+        let checksum = hasher.finalize();
+
+        // Build frame: [length:u32 BE][body][crc32:u32 LE]
+        let mut frame = Vec::with_capacity(4 + body.len() + 4);
         frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
         frame.extend_from_slice(&body);
+        frame.extend_from_slice(&checksum.to_le_bytes());
 
         Ok(frame)
     }
@@ -371,8 +386,9 @@ impl FrameCodec {
     /// Steps:
     /// 1. Read 4-byte length (big-endian)
     /// 2. Read payload bytes
-    /// 3. Decompress if compressed (auto-detect zstd magic bytes)
-    /// 4. Deserialize message (bincode)
+    /// 3. Read and validate CRC32 checksum (4 bytes, little-endian)
+    /// 4. Decompress if compressed (detected via envelope flag)
+    /// 5. Deserialize message (custom format)
     ///
     /// Returns: decoded Message
     pub fn decode<R: Read>(reader: &mut R) -> Result<Message, ProtocolError> {
@@ -390,6 +406,22 @@ impl FrameCodec {
         let mut payload = vec![0u8; payload_len];
         reader.read_exact(&mut payload)?;
 
+        // Read CRC32 checksum
+        let mut crc_buf = [0u8; 4];
+        reader.read_exact(&mut crc_buf)?;
+        let expected_crc = u32::from_le_bytes(crc_buf);
+
+        // Validate CRC32
+        let mut hasher = Hasher::new();
+        hasher.update(&payload);
+        let actual_crc = hasher.finalize();
+        if actual_crc != expected_crc {
+            return Err(ProtocolError::Crc32Mismatch {
+                expected: expected_crc,
+                actual: actual_crc,
+            });
+        }
+
         let mut cursor = Cursor::new(&payload);
 
         // Envelope
@@ -403,8 +435,16 @@ impl FrameCodec {
         cursor.read_exact(&mut mt_buf)?;
         let message_type = MessageType::from_u8(mt_buf[0])?;
 
-        let message_id = read_u64_le(&mut cursor)?;
-        let timestamp_secs = read_i64_le(&mut cursor)?;
+        let mut message_id = [0u8; 16];
+        cursor.read_exact(&mut message_id)?;
+        let timestamp_utc_ms = read_i64_le(&mut cursor)?;
+        let agent_id = read_string(&mut cursor)?;
+        let platform_raw = read_u8(&mut cursor)?;
+        let platform = match platform_raw {
+            1 => OsType::Windows,
+            2 => OsType::Linux,
+            other => return Err(ProtocolError::InvalidMessageType(other)),
+        };
         let mut bool_buf = [0u8; 1];
         cursor.read_exact(&mut bool_buf)?;
         let compressed = bool_buf[0] != 0;
@@ -481,12 +521,13 @@ impl FrameCodec {
                 })
             }
             MessageType::Ack => {
-                let message_id = read_u64_le(&mut payload_cursor)?;
+                let mut ack_message_id = [0u8; 16];
+                payload_cursor.read_exact(&mut ack_message_id)?;
                 let success = read_bool(&mut payload_cursor)?;
                 let error_code = read_optional_u32(&mut payload_cursor)?;
 
                 MessagePayload::Ack(MessageAck {
-                    message_id,
+                    message_id: ack_message_id,
                     success,
                     error_code,
                 })
@@ -509,7 +550,9 @@ impl FrameCodec {
                 version: ProtocolVersion { major, minor },
                 message_type,
                 message_id,
-                timestamp_secs,
+                timestamp_utc_ms,
+                agent_id,
+                platform,
                 compressed,
             },
             payload,
@@ -666,6 +709,13 @@ mod tests {
         assert!(!identity_no_caps.supports_compression());
     }
 
+    // Test helper: Create a 16-byte message ID from a u64
+    fn test_message_id(value: u64) -> [u8; 16] {
+        let mut id = [0u8; 16];
+        id[0..8].copy_from_slice(&value.to_le_bytes());
+        id
+    }
+
     /// Test: Encode and decode handshake message (uncompressed)
     #[test]
     fn test_encode_decode_handshake() {
@@ -681,8 +731,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Handshake,
-                message_id: 1,
-                timestamp_secs: 1703174400,
+                message_id: test_message_id(1),
+                timestamp_utc_ms: 1703174400000,
+                agent_id: "agent-123".to_string(),
+                platform: OsType::Windows,
                 compressed: false,
             },
             payload: MessagePayload::Handshake(identity.clone()),
@@ -697,7 +749,9 @@ mod tests {
         let decoded = FrameCodec::decode(&mut cursor).unwrap();
 
         assert_eq!(decoded.envelope.message_type, MessageType::Handshake);
-        assert_eq!(decoded.envelope.message_id, 1);
+        assert_eq!(decoded.envelope.message_id, test_message_id(1));
+        assert_eq!(decoded.envelope.agent_id, "agent-123");
+        assert_eq!(decoded.envelope.platform, OsType::Windows);
         match decoded.payload {
             MessagePayload::Handshake(decoded_identity) => {
                 assert_eq!(decoded_identity.instance_id, identity.instance_id);
@@ -738,8 +792,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 42,
-                timestamp_secs: 1703174410,
+                message_id: test_message_id(42),
+                timestamp_utc_ms: 1703174410000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(snapshot.clone()),
@@ -786,8 +842,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 100,
-                timestamp_secs: 1703174410,
+                message_id: test_message_id(100),
+                timestamp_utc_ms: 1703174410000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: true, // Enable compression
             },
             payload: MessagePayload::Snapshot(snapshot.clone()),
@@ -828,8 +886,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Backpressure,
-                message_id: 200,
-                timestamp_secs: 1703174420,
+                message_id: test_message_id(200),
+                timestamp_utc_ms: 1703174420000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Backpressure(BackpressureSignal {
@@ -858,12 +918,14 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Ack,
-                message_id: 300,
-                timestamp_secs: 1703174430,
+                message_id: test_message_id(300),
+                timestamp_utc_ms: 1703174430000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Ack(MessageAck {
-                message_id: 42,
+                message_id: test_message_id(42),
                 success: false,
                 error_code: Some(1001),
             }),
@@ -908,8 +970,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 999,
-                timestamp_secs: 1703174440,
+                message_id: test_message_id(999),
+                timestamp_utc_ms: 1703174440000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(large_snapshot),
@@ -965,8 +1029,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 42,
-                timestamp_secs: 1703174405,
+                message_id: test_message_id(42),
+                timestamp_utc_ms: 1703174405000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(snapshot),

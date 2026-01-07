@@ -1,5 +1,9 @@
 # Research Notes
 
+## Protocol Design Decision Summary
+
+This document captures the key design decisions that shaped the binary protocol specification. All decisions below are reflected in the spec clarifications (see `spec.md` Clarifications section) and functional requirements.
+
 ## MessageType discriminants
 - Decision: Encode `MessageType` as explicit numeric discriminants 1–7 aligned across Rust and .NET; serialize using `repr(u8)`/custom serde on Rust to emit the same values used by .NET.
 - Rationale: Prior default serde/bincode layout emitted variant order that mismatched the .NET decoder, causing Snapshot frames to be read as Heartbeat.
@@ -34,3 +38,12 @@
 - Decision: Regenerate the Rust-produced cross-language fixture after fixing `MessageType` serialization and rerun .NET test `CrossLanguageSnapshotDecode`.
 - Rationale: Fixture currently encodes Snapshot with wrong discriminant; must reflect fixed wire contract to keep parity tests meaningful.
 - Alternatives considered: Hand-edit fixture (error-prone); disable test (reduces safety net).
+
+## Alignment with Spec Clarifications
+
+All decisions above are consistent with the clarifications recorded in `spec.md` (Session 2026-01-06):
+- ✅ Snapshot delivery semantics (at-least-once + server de-dupe)
+- ✅ Version negotiation (highest mutually supported)
+- ✅ Oversize snapshot handling (segmentation with snapshotId + reassembly)
+- ✅ Backpressure signaling (throttleDelayMs numeric)
+- ✅ Segmented snapshot acks (per-part acknowledgment)

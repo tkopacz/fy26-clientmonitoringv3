@@ -1,14 +1,15 @@
 /// <summary>
 /// Wire format framing and decoding for binary protocol.
 /// 
-/// Framing: [4-byte length][message bytes]
-/// Message bytes: bincode-encoded Message, optionally zstd-compressed
+/// Framing: [4-byte length][message bytes][4-byte CRC32]
+/// Message bytes: custom-encoded Message, optionally zstd-compressed
 /// </summary>
 
 using System.Buffers.Binary;
 using System.Runtime.Serialization;
 using System.Text;
 using ZstdSharp;
+using Force.Crc32;
 
 namespace MonitoringServer.Protocol;
 
@@ -32,8 +33,9 @@ public static class FrameCodec
     /// Steps:
     /// 1. Read 4-byte length (big-endian)
     /// 2. Read payload bytes
-    /// 3. Decompress if needed (detected via envelope)
-    /// 4. Deserialize message (custom bincode-compatible format)
+    /// 3. Read and validate CRC32 checksum (4 bytes, little-endian)
+    /// 4. Decompress if needed (detected via envelope)
+    /// 5. Deserialize message (custom bincode-compatible format)
     /// </summary>
     /// <param name="stream">Input stream positioned at frame start</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -57,6 +59,18 @@ public static class FrameCodec
         var payload = new byte[payloadLength];
         await ReadExactAsync(stream, payload, cancellationToken);
 
+        // Read CRC32 checksum (4 bytes, little-endian)
+        var crcBuffer = new byte[4];
+        await ReadExactAsync(stream, crcBuffer, cancellationToken);
+        var expectedCrc = BinaryPrimitives.ReadUInt32LittleEndian(crcBuffer);
+
+        // Validate CRC32
+        var actualCrc = Crc32Algorithm.Compute(payload);
+        if (actualCrc != expectedCrc)
+        {
+            throw new Crc32MismatchException(expectedCrc, actualCrc);
+        }
+
         // Deserialize message (check compression flag first)
         var message = DeserializeMessage(payload);
 
@@ -69,7 +83,8 @@ public static class FrameCodec
     /// Steps:
     /// 1. Serialize message to bytes (bincode-compatible)
     /// 2. Compress if envelope.compressed=true (zstd level 3)
-    /// 3. Prepend 4-byte length (big-endian)
+    /// 3. Compute CRC32 checksum
+    /// 4. Build frame: [length:u32 BE][payload][crc32:u32 LE]
     /// </summary>
     /// <param name="message">Message to encode</param>
     /// <returns>Framed bytes ready to write to socket</returns>
@@ -89,10 +104,14 @@ public static class FrameCodec
             throw new FrameTooLargeException(payload.Length, MaxFrameSize);
         }
 
-        // Build frame: [length:u32][payload]
-        var frame = new byte[4 + payload.Length];
+        // Compute CRC32 checksum
+        var checksum = Crc32Algorithm.Compute(payload);
+
+        // Build frame: [length:u32 BE][payload][crc32:u32 LE]
+        var frame = new byte[4 + payload.Length + 4];
         BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(0, 4), (uint)payload.Length);
         payload.CopyTo(frame, 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4 + payload.Length, 4), checksum);
 
         return frame;
     }
@@ -174,9 +193,11 @@ public static class FrameCodec
         writer.Write(message.Envelope.Version.Major);
         writer.Write(message.Envelope.Version.Minor);
         writer.Write((byte)message.Envelope.MessageType);
-        writer.Write(message.Envelope.MessageId);
-        writer.Write(message.Envelope.TimestampSecs);
-        writer.Write(message.Envelope.Compressed);
+        writer.Write(message.Envelope.MessageId); // 16 bytes
+        writer.Write(message.Envelope.TimestampUtcMs); // i64
+        WriteString(writer, message.Envelope.AgentId); // string
+        writer.Write((byte)message.Envelope.Platform); // u8
+        writer.Write(message.Envelope.Compressed); // bool
 
         // Write payload based on type
         WritePayload(writer, message.Payload);
@@ -199,16 +220,20 @@ public static class FrameCodec
             Minor = reader.ReadByte()
         };
         var messageType = (MessageType)reader.ReadByte();
-        var messageId = reader.ReadUInt64();
-        var timestampSecs = reader.ReadInt64();
-        var compressed = reader.ReadBoolean();
+        var messageId = reader.ReadBytes(16); // 16-byte array
+        var timestampUtcMs = reader.ReadInt64(); // i64
+        var agentId = ReadString(reader); // string
+        var platform = (OsType)reader.ReadByte(); // u8
+        var compressed = reader.ReadBoolean(); // bool
 
         var envelope = new Envelope
         {
             Version = version,
             MessageType = messageType,
             MessageId = messageId,
-            TimestampSecs = timestampSecs,
+            TimestampUtcMs = timestampUtcMs,
+            AgentId = agentId,
+            Platform = platform,
             Compressed = compressed
         };
 
@@ -333,7 +358,7 @@ public static class FrameCodec
 
             MessageType.Ack => new MessagePayload.Ack(new MessageAck
             {
-                MessageId = reader.ReadUInt64(),
+                MessageId = reader.ReadBytes(16),
                 Success = reader.ReadBoolean(),
                 ErrorCode = ReadOptionalUInt32(reader)
             }),
