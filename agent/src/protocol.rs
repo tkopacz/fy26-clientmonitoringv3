@@ -146,6 +146,8 @@ pub struct ProcessSample {
     pub name: String,
     /// CPU usage percentage (0.0 - 100.0)
     pub cpu_percent: f32,
+    /// Memory usage percentage of total system memory (0.0 - 100.0)
+    pub memory_percent: f32,
     /// Memory usage in bytes (RSS)
     pub memory_bytes: u64,
     /// Optional command line (may be omitted for privacy/performance)
@@ -163,8 +165,10 @@ pub struct SnapshotPayload {
     pub window_end_secs: i64,
     /// Aggregate CPU usage percentage (0.0 - 100.0)
     pub total_cpu_percent: f32,
-    /// Aggregate memory usage in bytes
-    pub total_memory_bytes: u64,
+    /// Memory currently in use (bytes)
+    pub memory_used_bytes: u64,
+    /// Total system memory (bytes)
+    pub memory_total_bytes: u64,
     /// Process samples (ordered by CPU, truncated if needed)
     pub processes: Vec<ProcessSample>,
     /// True if process list was truncated to fit size cap
