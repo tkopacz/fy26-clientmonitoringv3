@@ -1,35 +1,35 @@
 # Implementation Plan: Protocol Messaging & Cross-Language Compatibility
 
-**Branch**: `001-protocol-messaging` | **Date**: 2025-12-21 | **Spec**: [/specs/001-protocol-messaging/spec.md](specs/001-protocol-messaging/spec.md)
+**Branch**: `001-protocol-messaging` | **Date**: 2026-01-06 | **Spec**: [/specs/001-protocol-messaging/spec.md](specs/001-protocol-messaging/spec.md)
 **Input**: Feature specification from `/specs/001-protocol-messaging/spec.md`
-
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Align Rust agent and .NET server on the binary protocol contract (framing, envelopes, payloads) with cross-language encode/decode parity. Immediate defect: Rust `MessageType` serialization emits the wrong discriminant on the wire, causing .NET to decode Snapshot frames as Heartbeat. Fix enum serialization to use explicit 1–7 discriminants, regenerate cross-language fixtures, and validate via Rust and .NET tests.
+Implement and validate a compact, versioned binary protocol shared by the Rust agent and .NET server, including: explicit length-prefixed framing with CRC32 validation, version negotiation, handshake gating, optional zstd compression (level 3), segmented all-process snapshots with reassembly, at-least-once snapshot delivery (retry until ack) with server de-duplication by `messageId`, and `throttleDelayMs` backpressure signaling (milliseconds). Ensure cross-language parity via encode/decode round-trips and fixture-based interoperability tests.
 
 ## Technical Context
 
-**Language/Version**: Rust 1.92.0 (agent); .NET 8.0.122 SDK (server)  
-**Primary Dependencies**: Rust: bincode, serde, zstd (level 3); .NET: System.Text.Json, ZstdSharp  
-**Storage**: File append via storage interface (initial implementation)  
-**Testing**: cargo test (unit + integration), xUnit (.NET), cross-language fixture-based test  
+**Language/Version**: Rust (agent) + .NET 8 (server)  
+**Primary Dependencies**: Rust: `serde`, `bincode`, `zstd`, `chrono`; .NET: `ZstdSharp.Port`, `Microsoft.Extensions.Logging.Abstractions`  
+**Storage**: File append via storage interface (`server/Storage`)  
+**Testing**: `cargo test --package agent`; `dotnet test server/Tests/MonitoringServer.Tests.csproj`; cross-language fixture interoperability  
 **Target Platform**: Rust agent on Windows/Linux; .NET server on Linux  
-**Project Type**: Dual projects (Rust crate `agent`, .NET server `MonitoringServer`)  
-**Performance Goals**: Snapshot frame target ≤ 64 KB typical; handshake→first snapshot ≤ 2s p95; agent overhead ≤2% CPU p95 / ≤25 MB steady per constitution  
-**Constraints**: At-most-once delivery semantics; backpressure honored; compression optional via capability flag; no macOS agent  
-**Scale/Scope**: Thousands of concurrent agents; protocol evolution must remain backward compatible
+**Project Type**: Dual project (Rust crate + .NET server)  
+**Performance Goals**: Typical top-process snapshot ≤ 64 KB; handshake→first snapshot ≤ 2s p95; agent overhead p95 ≤ 2% CPU and ≤ 25 MB memory steady state  
+**Constraints**: At-least-once snapshot delivery with server de-dupe by `messageId`; handshake negotiates highest mutually supported protocol version; per-message envelope timestamp uses UTC Unix milliseconds; optional zstd compression (level 3) via capability flag; oversized all-process snapshots are segmented (common `snapshotId`, part index/count) and each part is acked; backpressure is expressed as `throttleDelayMs` (milliseconds); plaintext transport is local/dev only (no production plaintext)  
+**Scale/Scope**: Support 1,000 concurrent agent sessions; protocol evolution must be backward compatible via optional fields and versioning
+
+**Ingestion Note**: Server persistence SHOULD support batching (flush by `maxBatchSize` or `maxBatchDelayMs`) and use queue/buffer depth to drive backpressure (`throttleDelayMs`).
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- Binary Protocol Contract: Length-prefixed framing, explicit message types, version negotiation, optional fields; cross-language parity required (enum discriminant fix). **Status: In scope**
-- Minimal Footprint Agent: Rust, low overhead, compression optional, truncation for oversize frames. **Status: In scope**
-- Scalable Linux .NET Server: Async decode pipeline, backpressure, ingestion via storage interface. **Status: In scope**
-- Test Discipline: Unit + integration + cross-language fixture; keep failing deserialization test to prove fix. **Status: Must stay green**
-- Storage Abstraction: File-append via interface; no business logic coupling. **Status: In scope**
+- Minimal Footprint Agent (Rust, Windows/Linux): Sampling and encoding are bounded (size targets, segmentation, optional compression); avoid blocking I/O on critical paths.
+- Scalable Linux .NET Server: Use async I/O and an ingestion pipeline with backpressure and batching; avoid large allocations (streaming decode).
+- Binary Protocol Contract: Explicit framing and message types; version negotiation; optional fields for evolution; includes platform + sampling timestamps.
+- Test Discipline (Unit + Combination/Integration): Unit tests per message; integration tests for handshake→snapshot→ack and cross-language fixture parity.
+- Storage Abstraction: Storage stays behind an interface; file-append remains a replaceable implementation.
 
 ## Project Structure
 
@@ -48,21 +48,34 @@ specs/001-protocol-messaging/
 ### Source Code (repository root)
 
 ```text
-agent/                # Rust agent crate
-├── src/protocol.rs   # Protocol types, encode/decode
-├── src/lib.rs
-└── tests/protocol_tests.rs  # Integration + cross-language fixture writer
+agent/
+├── src/
+│   ├── lib.rs
+│   ├── main.rs
+│   └── protocol.rs
+└── tests/
+    └── protocol_tests.rs
 
-server/               # .NET server
+server/
 ├── MonitoringServer.csproj
-├── Protocol/         # Message, envelope, codec
-└── Tests/            # xUnit tests (ProtocolTests.cs)
+├── Protocol/
+│   ├── FrameCodec.cs
+│   └── Messages.cs
+├── Storage/
+│   ├── FileStorageWriter.cs
+│   └── IStorageWriter.cs
+└── Tests/
+    ├── MonitoringServer.Tests.csproj
+    ├── Protocol/
+    │   └── ProtocolTests.cs
+    └── Storage/
+        └── FileStorageTests.cs
 
-run-all-tests.sh      # Orchestrates Rust + .NET test runs
+run-all-tests.sh
 ```
 
-**Structure Decision**: Dual-project layout (Rust agent crate + .NET server) with shared binary protocol contract validated via cross-language fixtures. Tests live alongside each project; integration tests under `agent/tests`, xUnit under `server/Tests`.
+**Structure Decision**: Keep protocol encode/decode logic in each language stack, validated by shared discriminants and fixture-based tests.
 
 ## Complexity Tracking
 
-No constitution violations planned; no additional justification required.
+No constitution violations are required for this feature.

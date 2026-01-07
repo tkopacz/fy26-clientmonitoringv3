@@ -5,6 +5,9 @@ info:
   description: |
     Binary frame ingest surface used for interoperability testing and diagnostics.
     Frames are length-prefixed and include an explicit message type discriminant (1–7).
+    NOTE: This OpenAPI document is for diagnostics/interoperability reference only.
+    Implementing an HTTP ingest endpoint is out of scope for this feature unless
+    explicitly added as a requirement.
 servers:
   - url: https://localhost:8443
 paths:
@@ -19,12 +22,12 @@ paths:
             schema:
               type: string
               format: binary
-            description: Length-prefixed frame with message_type discriminant 1–7 and payload encoded per schema.
+            description: Length-prefixed frame with CRC32 checksum, message_type discriminant 1–7, and payload encoded per schema.
       responses:
         '204':
           description: Frame accepted
         '400':
-          description: Invalid frame (length mismatch, unknown discriminant)
+          description: Invalid frame (length mismatch, checksum failure, unknown discriminant)
         '429':
           description: Backpressure active; sender should throttle
 components:
@@ -32,16 +35,22 @@ components:
     Envelope:
       type: object
       properties:
-        version:
+        versionMajor:
           type: integer
           format: int32
+          description: Protocol version major byte.
+        versionMinor:
+          type: integer
+          format: int32
+          description: Protocol version minor byte.
         messageType:
           type: integer
           format: int32
-          description: 1=Handshake, 2=HandshakeAck, 3=Snapshot, 4=Heartbeat, 5=Backpressure, 6=Ack, 7=Error
-        length:
-          type: integer
-          format: int32
+          description: 1=Handshake, 2=HandshakeAck, 3=Heartbeat, 4=Snapshot, 5=Ack, 6=Backpressure, 7=Error
+        messageId:
+          type: string
+          format: uuid
+          description: Unique per frame/part; used for acking and server de-duplication. On-wire the binary protocol encodes this as 16 raw bytes.
         timestampUtc:
           type: integer
           format: int64
@@ -60,6 +69,18 @@ components:
     Snapshot:
       type: object
       properties:
+        snapshotId:
+          type: string
+          format: uuid
+          description: Common id across segmented snapshot parts. On-wire the binary protocol encodes this as 16 raw bytes.
+        partIndex:
+          type: integer
+          format: int32
+          description: 0-based part index when segmented.
+        partCount:
+          type: integer
+          format: int32
+          description: Total parts when segmented.
         windowStart:
           type: integer
           format: int64
@@ -75,14 +96,22 @@ components:
         memTotalBytes:
           type: integer
           format: int64
-        truncated:
-          type: boolean
-        compressionApplied:
-          type: boolean
         processes:
           type: array
           items:
             $ref: '#/components/schemas/ProcessSample'
+    Backpressure:
+      type: object
+      properties:
+        throttleDelayMs:
+          type: integer
+          format: int32
+          description: Throttle delay in milliseconds the agent applies to its snapshot send rate (0 = no throttle).
+        reason:
+          type: string
+        timestampUtc:
+          type: integer
+          format: int64
     ProcessSample:
       type: object
       properties:

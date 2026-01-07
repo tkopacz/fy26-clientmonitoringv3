@@ -5,6 +5,16 @@
 **Status**: Draft  
 **Input**: User description: "build specification for protocol and implement key components for rust and .net to send and receive messages"
 
+## Clarifications
+
+### Session 2026-01-06
+
+- Q: Which delivery semantics should the protocol guarantee for snapshot messages? → A: At-least-once (agent retries until ack; server de-dupes by messageId).
+- Q: When agent and server support different protocol versions, what should the handshake do? → A: Negotiate to the highest mutually supported version and proceed.
+- Q: When an all-process snapshot is still oversized after negotiated zstd compression, what should happen? → A: Segment into multiple parts with the same snapshotId; server reassembles.
+- Q: What form should backpressure signaling take? → A: Throttle delay in milliseconds (numeric; agent adjusts send interval).
+- Q: For segmented snapshots, how should acks work? → A: Ack each part/frame (each part has its own messageId); persist once after full reassembly.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ingest binary snapshots end-to-end (Priority: P1)
@@ -14,6 +24,9 @@ snapshots from deployed Rust agents (Windows/Linux) that include CPU,
 memory, and top processes (or all processes when requested) and writes
 them through the storage interface (initially append-to-file) without
 drops.
+
+"Without drops" means snapshots are not permanently lost; duplicates may
+occur due to at-least-once retry and are de-duplicated by `messageId`.
 
 **Why this priority**: Core value is reliable telemetry delivery; no
 other functionality matters if ingest fails.
@@ -73,9 +86,9 @@ increments error counters, and both remain alive.
 **Acceptance Scenarios**:
 
 1. **Given** the server receives a corrupted frame, **When** checksum or
-   length validation fails, **Then** the server rejects that frame,
-   emits a protocol error message, and keeps the connection alive if
-   safe to do so.
+  length validation fails, **Then** the server rejects that frame,
+  emits a protocol error message, and keeps the connection alive if
+  safe to do so.
 2. **Given** the agent detects repeated backpressure signals, **When**
    threshold is met, **Then** the agent reduces send rate while still
    delivering periodic heartbeats to prove liveness.
@@ -100,39 +113,93 @@ increments error counters, and both remain alive.
 - **FR-001**: The agent MUST collect CPU usage, memory usage, and top-N
   processes by CPU and memory with an option to send all processes on
   request; macOS agents are out of scope.
+  - Default: `topN = 100` unless configured otherwise.
 - **FR-002**: A versioned binary protocol MUST define framing (length
   prefix and message type), envelope metadata (protocol version,
   platform, timestamps), and payload schemas for handshake, heartbeat,
   snapshot, error, and backpressure signals.
+  - Framing MUST be: a 4-byte unsigned little-endian length prefix (bytes
+    following the prefix), followed by a 4-byte unsigned little-endian
+    CRC32 checksum of the remaining frame bytes (everything after the
+    checksum), followed by the encoded envelope + payload.
+  - The checksum algorithm MUST be CRC-32/ISO-HDLC (aka “standard CRC32”):
+    polynomial 0x04C11DB7, init 0xFFFFFFFF, refin=true, refout=true,
+    xorout 0xFFFFFFFF.
+  - Checksum validation MUST occur before envelope/payload decoding.
+  - Envelope timestamps MUST represent per-message send time as UTC Unix
+    milliseconds.
 - **FR-003**: The protocol MUST support backward-compatible evolution
-  via optional fields and version negotiation; unknown optional fields
-  MUST be safely ignored or recorded without failing the session.
+  via optional fields and version negotiation; during handshake, agent
+  and server MUST negotiate the highest mutually supported protocol
+  version and proceed. The agent MUST communicate its supported version
+  range (min/max) during handshake, and the server MUST reply with the
+  chosen version. If no overlap exists the handshake MUST fail with an
+  explicit error; unknown optional fields MUST be safely ignored or
+  recorded without failing the session.
 - **FR-004**: Handshake MUST include agent identity (instance id, OS
-  type, agent version), protocol version, and capabilities (supports
-  all-process option, compression if allowed) and receive server ack
-  before snapshots are accepted.
+  type, agent version), supported protocol version range (min/max), and
+  capabilities (supports all-process option, compression if allowed) and
+  receive server ack before snapshots are accepted.
 - **FR-005**: Snapshots MUST include sampling window start/end,
-  aggregated CPU/memory, and per-process entries (pid, name, cpu%, mem%/
-  rss, optional command line when permitted by platform); ordering or
-  truncation rules MUST be defined when payload exceeds size targets.
+  aggregated CPU and memory (used bytes and total bytes), and per-process
+  entries (pid, name, cpu%, mem%/rss, optional command line when
+  permitted by platform); ordering or truncation/segmentation rules MUST
+  be defined when payload exceeds size targets.
+  - Process ordering MUST be deterministic. When truncating to top-N,
+    sort by `cpu%` descending, then by `pid` ascending as a tie-break.
 - **FR-006**: Transport sessions MUST include keepalive/heartbeat and
   backpressure signaling so the server can slow senders without
-  disconnects.
-- **FR-007**: Reliability semantics MUST implement at-most-once
-  delivery: snapshot messages include ids for correlation, are not
-  retried after a nack or timeout, and errors are surfaced via metrics
-  and logs.
+  disconnects; backpressure MUST be expressed as `throttleDelayMs`
+  (unsigned integer milliseconds; 0 = no throttle) that the agent applies
+  to its snapshot send rate. The agent MUST enforce
+  `effectiveIntervalMs = max(configuredSnapshotIntervalMs, throttleDelayMs)`.
+  - Backpressure MAY include a short, human-readable reason string for
+    logging/diagnostics.
+- **FR-007**: Reliability semantics MUST implement at-least-once
+  delivery for snapshots: snapshot messages include unique message ids
+  for correlation and de-duplication; the agent MUST retry on timeout or
+  disconnect until an ack is received, and the server MUST de-dupe by
+  message id so storage does not double-count; errors are surfaced via
+  metrics and logs.
+  - `messageId` and `snapshotId` MUST be opaque 16-byte identifiers. On
+    wire they are encoded as exactly 16 bytes (not strings, not varints).
+  - Retry policy MUST be deterministic and configurable: `ackTimeoutMs`
+    default 2000ms; exponential backoff starting at 500ms up to 30000ms;
+    no jitter (tests must be deterministic).
+  - On reconnect, the agent MUST resend any unacked snapshot parts
+    in-order (oldest first).
+  - The server’s de-dupe window MUST be at least the lifetime of a
+    connection session; cross-restart de-dupe is out of scope for this
+    feature.
 - **FR-008**: Transport MAY run plaintext for local/dev use only, with a
   configuration switch to enable TLS/mTLS in future iterations; default
   posture must document risks and prohibit plaintext in production
   deployments.
 - **FR-009**: Payload size safeguards MUST apply zstd compression
-  (level 3) when negotiated via capability flag, then truncate to top-N
-  processes to fit within the 64 KB target; truncation rules must be
-  deterministic and signaled in metadata when applied.
+  (level 3) when negotiated via capability flag. The protocol MUST define
+  explicit size limits: `targetSnapshotBytes = 65536` (64 KiB) and
+  `maxFrameBytes = 262144` (256 KiB hard cap).
+  - If an all-process snapshot still exceeds `targetSnapshotBytes` after
+    compression, it MUST be segmented into multiple snapshot parts that
+    share a common snapshotId and include part index/part count so the
+    server can reassemble.
+  - Each snapshot part MUST carry its own messageId and be acked
+    individually, and the server MUST persist the snapshot only once
+    after successful full reassembly.
+  - Any frame exceeding `maxFrameBytes` MUST be rejected with an explicit
+    error response.
+  - Any truncation rules (if used) must be deterministic and signaled in
+    metadata when applied.
 - **FR-010**: The server MUST decode, validate, and route messages
   through an ingestion pipeline that applies backpressure, batching, and
   validation before invoking the storage interface.
+  - Batching MUST be supported for storage writes: the server MAY buffer
+    decoded snapshots and append them in batches, flushing when either
+    `maxBatchSize` is reached or `maxBatchDelayMs` elapses (both
+    configurable).
+  - Backpressure decisions SHOULD be based on the server-side queue/buffer
+    depth (e.g., when buffered snapshots exceed a threshold, emit
+    `throttleDelayMs`).
 - **FR-011**: The storage layer MUST be accessed via an interface;
   initial implementation appends decoded records to a file with a
   documented rotation policy; business logic cannot depend on file I/O.
@@ -146,17 +213,20 @@ increments error counters, and both remain alive.
 
 ### Key Entities *(include if feature involves data)*
 
-- **ProtocolEnvelope**: Contains version, message type, length, and
-  envelope metadata (timestamps, platform, agent id).
+- **ProtocolEnvelope**: Contains protocol version (MAJOR/MINOR bytes),
+  message type, message id, and envelope metadata (per-message send time
+  `timestampUtc` as UTC Unix milliseconds, platform, agent id).
 - **AgentIdentity**: Agent instance id, OS type, agent version,
   capability flags (all-process allowed, compression if any).
 - **SnapshotPayload**: Sampling window, aggregate CPU/memory, list of
   process samples (pid, name, cpu%, mem%/rss, optional cmdline, ordering
   by cpu%).
-- **BackpressureSignal**: Server-to-agent message indicating throttle
-  level or pause/resume instructions.
+- **BackpressureSignal**: Server-to-agent message indicating a throttle
+  delay (`throttleDelayMs`, milliseconds) the agent applies to its send
+  rate.
 - **Ack/Nack**: Correlates to message ids; carries status and optional
-  error code.
+  error code (for segmented snapshots, each part is acked by its own
+  messageId).
 - **StorageRecord**: Canonical decoded record persisted through the
   storage interface; independent of storage medium.
 
