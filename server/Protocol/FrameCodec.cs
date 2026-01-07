@@ -193,9 +193,11 @@ public static class FrameCodec
         writer.Write(message.Envelope.Version.Major);
         writer.Write(message.Envelope.Version.Minor);
         writer.Write((byte)message.Envelope.MessageType);
-        writer.Write(message.Envelope.MessageId);
-        writer.Write(message.Envelope.TimestampSecs);
-        writer.Write(message.Envelope.Compressed);
+        writer.Write(message.Envelope.MessageId); // 16 bytes
+        writer.Write(message.Envelope.TimestampUtcMs); // i64
+        WriteString(writer, message.Envelope.AgentId); // string
+        writer.Write((byte)message.Envelope.Platform); // u8
+        writer.Write(message.Envelope.Compressed); // bool
 
         // Write payload based on type
         WritePayload(writer, message.Payload);
@@ -218,16 +220,20 @@ public static class FrameCodec
             Minor = reader.ReadByte()
         };
         var messageType = (MessageType)reader.ReadByte();
-        var messageId = reader.ReadUInt64();
-        var timestampSecs = reader.ReadInt64();
-        var compressed = reader.ReadBoolean();
+        var messageId = reader.ReadBytes(16); // 16-byte array
+        var timestampUtcMs = reader.ReadInt64(); // i64
+        var agentId = ReadString(reader); // string
+        var platform = (OsType)reader.ReadByte(); // u8
+        var compressed = reader.ReadBoolean(); // bool
 
         var envelope = new Envelope
         {
             Version = version,
             MessageType = messageType,
             MessageId = messageId,
-            TimestampSecs = timestampSecs,
+            TimestampUtcMs = timestampUtcMs,
+            AgentId = agentId,
+            Platform = platform,
             Compressed = compressed
         };
 
@@ -352,7 +358,7 @@ public static class FrameCodec
 
             MessageType.Ack => new MessagePayload.Ack(new MessageAck
             {
-                MessageId = reader.ReadUInt64(),
+                MessageId = reader.ReadBytes(16),
                 Success = reader.ReadBoolean(),
                 ErrorCode = ReadOptionalUInt32(reader)
             }),
