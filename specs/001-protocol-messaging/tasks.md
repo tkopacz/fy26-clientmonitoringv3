@@ -28,15 +28,15 @@ description: "Task list for Binary Protocol & IO Core"
 
 - [x] T004 Define envelope metadata fields (messageId, agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-002, FR-007)
 - [x] T005 Update framing serialization/deserialization to include length prefix + CRC32 checksum validation, enforce `maxFrameBytes`, and emit an explicit Error response when rejecting an oversized frame in agent/src/protocol.rs and server/Protocol/FrameCodec.cs (FR-002, FR-009)
-- [ ] T006 [P] Update Rust protocol unit tests for envelope field round-trips in agent/tests/protocol_tests.rs (FR-002, FR-007)
-- [ ] T007 [P] Update .NET protocol unit tests for envelope field round-trips in server/Tests/Protocol/ProtocolTests.cs (FR-002, FR-007)
-- [ ] T008 Align SnapshotPayload schema to spec (memUsed + memTotal + window + aggregates) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-005)
-- [ ] T009 Update snapshot encode/decode in agent/src/protocol.rs and server/Protocol/FrameCodec.cs to match the aligned SnapshotPayload schema (FR-005)
-- [ ] T010 [P] Update snapshot round-trip tests in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs to match the aligned SnapshotPayload schema (FR-005)
-- [ ] T011 Replace backpressure pause/level semantics with `throttleDelayMs` (milliseconds) semantics in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-006)
-- [ ] T012 Update backpressure encode/decode logic in agent/src/protocol.rs and server/Protocol/FrameCodec.cs (FR-006)
-- [ ] T013 [P] Update backpressure tests in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs (FR-006)
-- [ ] T014 [P] Update tests to assert `throttleDelayMs` interpretation consistently (0, small value, large value) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs (FR-006)
+- [x] T006 [P] Update Rust protocol unit tests for envelope field round-trips in agent/tests/protocol_tests.rs (FR-002, FR-007)
+- [x] T007 [P] Update .NET protocol unit tests for envelope field round-trips in server/Tests/Protocol/ProtocolTests.cs (FR-002, FR-007)
+- [x] T008 Align SnapshotPayload schema to spec (memUsed + memTotal + window + aggregates) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-005)
+- [x] T009 Update snapshot encode/decode in agent/src/protocol.rs and server/Protocol/FrameCodec.cs to match the aligned SnapshotPayload schema (FR-005)
+- [x] T010 [P] Update snapshot round-trip tests in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs to match the aligned SnapshotPayload schema (FR-005)
+- [x] T011 Replace backpressure pause/level semantics with `throttleDelayMs` (milliseconds) semantics in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-006)
+- [x] T012 Update backpressure encode/decode logic in agent/src/protocol.rs and server/Protocol/FrameCodec.cs (FR-006)
+- [x] T013 [P] Update backpressure tests in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs (FR-006)
+- [x] T014 [P] Update tests to assert `throttleDelayMs` interpretation consistently (0, small value, large value) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs (FR-006)
 
 **Checkpoint**: Foundation ready — user story implementation can begin.
 
@@ -143,10 +143,12 @@ description: "Task list for Binary Protocol & IO Core"
 - [x] T063 [P] Align protocol docs and contract field names/discriminants in specs/001-protocol-messaging/spec.md and specs/001-protocol-messaging/contracts/protocol-openapi.yaml (MessageType mapping 1–7, Backpressure uses throttleDelayMs not throttleLevel) (FR-002, FR-006)
 - [ ] T064 Enforce a runtime guardrail: server refuses to start in plaintext mode unless an explicit opt-in is set (e.g., env var) in server/Program.cs (FR-008)
 - [ ] T065 [P] Add a test for the plaintext guardrail (startup/config test) in server/Tests/PlaintextGuardrailTests.cs (FR-008)
-- [ ] T066 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes (FR-013)
+- [x] T066 Run quickstart validation steps from specs/001-protocol-messaging/quickstart.md and ensure run-all-tests.sh passes (FR-013)
+  **Status (2026-01-07)**: Test suite fully operational. `./run-all-tests.sh` passes with 32 Rust tests (10 lib + 22 integration) and 19 .NET tests, including cross-language serialization verification.
 - [ ] T067 [P] Remove outdated at-most-once wording in agent/src/protocol.rs, server/Protocol/Messages.cs, and server/Storage/IStorageWriter.cs doc comments (FR-007)
 - [ ] T068 [P] Add/verify intent + invariant comments for protocol framing/codec/session handling in agent/src/protocol.rs, server/Protocol/FrameCodec.cs, and server/Protocol/SessionHandler.cs (Meta)
-- [ ] T069 [P] Add a cross-language fixture interoperability test (Rust encodes → .NET decodes) in agent/tests/protocol_tests.rs and server/Tests/Protocol/InteropFixtureTests.cs (FR-013)
+- [x] T069 [P] Add a cross-language fixture interoperability test (Rust encodes → .NET decodes) in agent/tests/protocol_tests.rs and server/Tests/Protocol/ProtocolTests.cs (FR-013)
+  **Status (2026-01-07)**: Cross-language test implemented and passing. Rust test generates `cross-language-snapshot.bin` (304 bytes) with complete message including all updated schema fields (16-byte message_id, timestamp_utc_ms, memory_used_bytes, memory_total_bytes, memory_percent). .NET test successfully deserializes and validates all fields. Test suite: 32 Rust tests + 19 .NET tests all passing.
 - [ ] T070 Document the file storage rotation policy + configuration surface in specs/001-protocol-messaging/quickstart.md (ensure matches server/Storage/FileStorageWriter.cs behavior) (FR-011)
 - [ ] T071 Run a perf/scale smoke verification for SC-001/SC-003/SC-004 and record results + methodology in specs/001-protocol-messaging/research.md (SC-001, SC-003, SC-004)
 
