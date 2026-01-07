@@ -1,14 +1,15 @@
 /// <summary>
 /// Wire format framing and decoding for binary protocol.
 /// 
-/// Framing: [4-byte length][message bytes]
-/// Message bytes: bincode-encoded Message, optionally zstd-compressed
+/// Framing: [4-byte length][message bytes][4-byte CRC32]
+/// Message bytes: custom-encoded Message, optionally zstd-compressed
 /// </summary>
 
 using System.Buffers.Binary;
 using System.Runtime.Serialization;
 using System.Text;
 using ZstdSharp;
+using Force.Crc32;
 
 namespace MonitoringServer.Protocol;
 
@@ -32,8 +33,9 @@ public static class FrameCodec
     /// Steps:
     /// 1. Read 4-byte length (big-endian)
     /// 2. Read payload bytes
-    /// 3. Decompress if needed (detected via envelope)
-    /// 4. Deserialize message (custom bincode-compatible format)
+    /// 3. Read and validate CRC32 checksum (4 bytes, little-endian)
+    /// 4. Decompress if needed (detected via envelope)
+    /// 5. Deserialize message (custom bincode-compatible format)
     /// </summary>
     /// <param name="stream">Input stream positioned at frame start</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -57,6 +59,18 @@ public static class FrameCodec
         var payload = new byte[payloadLength];
         await ReadExactAsync(stream, payload, cancellationToken);
 
+        // Read CRC32 checksum (4 bytes, little-endian)
+        var crcBuffer = new byte[4];
+        await ReadExactAsync(stream, crcBuffer, cancellationToken);
+        var expectedCrc = BinaryPrimitives.ReadUInt32LittleEndian(crcBuffer);
+
+        // Validate CRC32
+        var actualCrc = Crc32Algorithm.Compute(payload);
+        if (actualCrc != expectedCrc)
+        {
+            throw new Crc32MismatchException(expectedCrc, actualCrc);
+        }
+
         // Deserialize message (check compression flag first)
         var message = DeserializeMessage(payload);
 
@@ -69,7 +83,8 @@ public static class FrameCodec
     /// Steps:
     /// 1. Serialize message to bytes (bincode-compatible)
     /// 2. Compress if envelope.compressed=true (zstd level 3)
-    /// 3. Prepend 4-byte length (big-endian)
+    /// 3. Compute CRC32 checksum
+    /// 4. Build frame: [length:u32 BE][payload][crc32:u32 LE]
     /// </summary>
     /// <param name="message">Message to encode</param>
     /// <returns>Framed bytes ready to write to socket</returns>
@@ -89,10 +104,14 @@ public static class FrameCodec
             throw new FrameTooLargeException(payload.Length, MaxFrameSize);
         }
 
-        // Build frame: [length:u32][payload]
-        var frame = new byte[4 + payload.Length];
+        // Compute CRC32 checksum
+        var checksum = Crc32Algorithm.Compute(payload);
+
+        // Build frame: [length:u32 BE][payload][crc32:u32 LE]
+        var frame = new byte[4 + payload.Length + 4];
         BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(0, 4), (uint)payload.Length);
         payload.CopyTo(frame, 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4 + payload.Length, 4), checksum);
 
         return frame;
     }

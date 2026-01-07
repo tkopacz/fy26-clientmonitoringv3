@@ -2,10 +2,10 @@
 /// Binary protocol definitions and decoding for monitoring server.
 /// 
 /// Implements the versioned binary protocol with:
-/// - Framing: length-prefix + message type
+/// - Framing: length-prefix + message + CRC32 checksum
 /// - Envelope: version, platform, timestamps, agent ID
 /// - zstd decompression
-/// - At-most-once delivery semantics
+/// - At-least-once delivery semantics with retry and de-duplication
 /// </summary>
 
 namespace MonitoringServer.Protocol;
@@ -167,8 +167,8 @@ public sealed class BackpressureSignal
 /// </summary>
 public sealed class MessageAck
 {
-    /// <summary>ID of the message being acknowledged</summary>
-    public required ulong MessageId { get; init; }
+    /// <summary>ID of the message being acknowledged (opaque 16-byte identifier)</summary>
+    public required byte[] MessageId { get; init; }
 
     /// <summary>Success flag</summary>
     public required bool Success { get; init; }
@@ -189,11 +189,17 @@ public sealed class Envelope
     /// <summary>Message type</summary>
     public required MessageType MessageType { get; init; }
 
-    /// <summary>Unique message ID for correlation</summary>
-    public required ulong MessageId { get; init; }
+    /// <summary>Unique message ID for correlation (opaque 16-byte identifier)</summary>
+    public required byte[] MessageId { get; init; }
 
-    /// <summary>Timestamp when message was created (Unix epoch seconds)</summary>
-    public required long TimestampSecs { get; init; }
+    /// <summary>Timestamp when message was created (UTC Unix epoch milliseconds)</summary>
+    public required long TimestampUtcMs { get; init; }
+
+    /// <summary>Agent instance identifier</summary>
+    public required string AgentId { get; init; }
+
+    /// <summary>Platform (OS type)</summary>
+    public required OsType Platform { get; init; }
 
     /// <summary>True if payload is zstd-compressed</summary>
     public required bool Compressed { get; init; }
@@ -260,5 +266,17 @@ public class FrameTooLargeException : ProtocolException
     {
         Size = size;
         MaxSize = maxSize;
+    }
+}
+
+public class Crc32MismatchException : ProtocolException
+{
+    public uint Expected { get; }
+    public uint Actual { get; }
+    public Crc32MismatchException(uint expected, uint actual)
+        : base($"CRC32 checksum mismatch: expected 0x{expected:X8}, got 0x{actual:X8}")
+    {
+        Expected = expected;
+        Actual = actual;
     }
 }

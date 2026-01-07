@@ -12,9 +12,10 @@ description: "Task list for Binary Protocol & IO Core"
 
 **Purpose**: Establish a clean baseline and ensure build/test workflow is reproducible.
 
-- [ ] T001 Run baseline suite using run-all-tests.sh and record failures in specs/001-protocol-messaging/tasks.md (Meta)
-- [ ] T002 [P] Add a minimal local dev run note to specs/001-protocol-messaging/quickstart.md (TCP server + agent sender) (Meta)
-- [ ] T003 [P] Add/confirm a repo-level protocol decision summary in specs/001-protocol-messaging/research.md (ensure matches spec Clarifications) (Meta)
+- [x] T001 Run baseline suite using run-all-tests.sh and record failures in specs/001-protocol-messaging/tasks.md (Meta)
+  **Baseline Result (2026-01-07)**: Build tools not available in environment (cargo and dotnet not found). Tests cannot run until toolchain is installed.
+- [x] T002 [P] Add a minimal local dev run note to specs/001-protocol-messaging/quickstart.md (TCP server + agent sender) (Meta)
+- [x] T003 [P] Add/confirm a repo-level protocol decision summary in specs/001-protocol-messaging/research.md (ensure matches spec Clarifications) (Meta)
 
 ---
 
@@ -24,8 +25,8 @@ description: "Task list for Binary Protocol & IO Core"
 
 **⚠️ CRITICAL**: No user story work should begin until this phase is complete.
 
-- [ ] T004 Define envelope metadata fields (messageId, agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-002, FR-007)
-- [ ] T005 Update framing serialization/deserialization to include length prefix + CRC32 checksum validation, enforce `maxFrameBytes`, and emit an explicit Error response when rejecting an oversized frame in agent/src/protocol.rs and server/Protocol/FrameCodec.cs (FR-002, FR-009)
+- [x] T004 Define envelope metadata fields (messageId, agent id, platform, per-message timestampUtc) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-002, FR-007)
+- [x] T005 Update framing serialization/deserialization to include length prefix + CRC32 checksum validation, enforce `maxFrameBytes`, and emit an explicit Error response when rejecting an oversized frame in agent/src/protocol.rs and server/Protocol/FrameCodec.cs (FR-002, FR-009)
 - [ ] T006 [P] Update Rust protocol unit tests for envelope field round-trips in agent/tests/protocol_tests.rs (FR-002, FR-007)
 - [ ] T007 [P] Update .NET protocol unit tests for envelope field round-trips in server/Tests/Protocol/ProtocolTests.cs (FR-002, FR-007)
 - [ ] T008 Align SnapshotPayload schema to spec (memUsed + memTotal + window + aggregates) in agent/src/protocol.rs and server/Protocol/Messages.cs (FR-005)
