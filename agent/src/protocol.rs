@@ -709,6 +709,13 @@ mod tests {
         assert!(!identity_no_caps.supports_compression());
     }
 
+    // Test helper: Create a 16-byte message ID from a u64
+    fn test_message_id(value: u64) -> [u8; 16] {
+        let mut id = [0u8; 16];
+        id[0..8].copy_from_slice(&value.to_le_bytes());
+        id
+    }
+
     /// Test: Encode and decode handshake message (uncompressed)
     #[test]
     fn test_encode_decode_handshake() {
@@ -724,8 +731,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Handshake,
-                message_id: 1,
-                timestamp_secs: 1703174400,
+                message_id: test_message_id(1),
+                timestamp_utc_ms: 1703174400000,
+                agent_id: "agent-123".to_string(),
+                platform: OsType::Windows,
                 compressed: false,
             },
             payload: MessagePayload::Handshake(identity.clone()),
@@ -740,7 +749,9 @@ mod tests {
         let decoded = FrameCodec::decode(&mut cursor).unwrap();
 
         assert_eq!(decoded.envelope.message_type, MessageType::Handshake);
-        assert_eq!(decoded.envelope.message_id, 1);
+        assert_eq!(decoded.envelope.message_id, test_message_id(1));
+        assert_eq!(decoded.envelope.agent_id, "agent-123");
+        assert_eq!(decoded.envelope.platform, OsType::Windows);
         match decoded.payload {
             MessagePayload::Handshake(decoded_identity) => {
                 assert_eq!(decoded_identity.instance_id, identity.instance_id);
@@ -781,8 +792,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 42,
-                timestamp_secs: 1703174410,
+                message_id: test_message_id(42),
+                timestamp_utc_ms: 1703174410000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(snapshot.clone()),
@@ -829,8 +842,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 100,
-                timestamp_secs: 1703174410,
+                message_id: test_message_id(100),
+                timestamp_utc_ms: 1703174410000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: true, // Enable compression
             },
             payload: MessagePayload::Snapshot(snapshot.clone()),
@@ -871,8 +886,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Backpressure,
-                message_id: 200,
-                timestamp_secs: 1703174420,
+                message_id: test_message_id(200),
+                timestamp_utc_ms: 1703174420000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Backpressure(BackpressureSignal {
@@ -901,12 +918,14 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Ack,
-                message_id: 300,
-                timestamp_secs: 1703174430,
+                message_id: test_message_id(300),
+                timestamp_utc_ms: 1703174430000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Ack(MessageAck {
-                message_id: 42,
+                message_id: test_message_id(42),
                 success: false,
                 error_code: Some(1001),
             }),
@@ -951,8 +970,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 999,
-                timestamp_secs: 1703174440,
+                message_id: test_message_id(999),
+                timestamp_utc_ms: 1703174440000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(large_snapshot),
@@ -1008,8 +1029,10 @@ mod tests {
             envelope: Envelope {
                 version: ProtocolVersion::CURRENT,
                 message_type: MessageType::Snapshot,
-                message_id: 42,
-                timestamp_secs: 1703174405,
+                message_id: test_message_id(42),
+                timestamp_utc_ms: 1703174405000,
+                agent_id: "test-agent".to_string(),
+                platform: OsType::Linux,
                 compressed: false,
             },
             payload: MessagePayload::Snapshot(snapshot),

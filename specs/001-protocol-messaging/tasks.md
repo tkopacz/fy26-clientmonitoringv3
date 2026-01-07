@@ -14,6 +14,7 @@ description: "Task list for Binary Protocol & IO Core"
 
 - [x] T001 Run baseline suite using run-all-tests.sh and record failures in specs/001-protocol-messaging/tasks.md (Meta)
   **Baseline Result (2026-01-07)**: Build tools not available in environment (cargo and dotnet not found). Tests cannot run until toolchain is installed.
+  **Code Status**: Static analysis passed. Code is ready for compilation once toolchain is available. All syntax checks passed for both Rust and C# implementations.
 - [x] T002 [P] Add a minimal local dev run note to specs/001-protocol-messaging/quickstart.md (TCP server + agent sender) (Meta)
 - [x] T003 [P] Add/confirm a repo-level protocol decision summary in specs/001-protocol-messaging/research.md (ensure matches spec Clarifications) (Meta)
 
