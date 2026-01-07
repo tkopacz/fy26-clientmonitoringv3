@@ -288,13 +288,15 @@ public static class FrameCodec
                 writer.Write(snapshot.Payload.WindowStartSecs);
                 writer.Write(snapshot.Payload.WindowEndSecs);
                 writer.Write(snapshot.Payload.TotalCpuPercent);
-                writer.Write(snapshot.Payload.TotalMemoryBytes);
+                writer.Write(snapshot.Payload.MemUsedBytes);
+                writer.Write(snapshot.Payload.MemTotalBytes);
                 writer.Write((ulong)snapshot.Payload.Processes.Count);
                 foreach (var process in snapshot.Payload.Processes)
                 {
                     writer.Write(process.Pid);
                     WriteString(writer, process.Name);
                     writer.Write(process.CpuPercent);
+                    writer.Write(process.MemoryPercent);
                     writer.Write(process.MemoryBytes);
                     WriteOptionalString(writer, process.Cmdline);
                 }
@@ -308,8 +310,8 @@ public static class FrameCodec
                 break;
 
             case MessagePayload.Backpressure backpressure:
-                writer.Write(backpressure.Signal.Level);
-                WriteOptionalUInt32(writer, backpressure.Signal.PauseSecs);
+                writer.Write(backpressure.Signal.ThrottleDelayMs);
+                WriteOptionalString(writer, backpressure.Signal.Reason);
                 break;
 
             case MessagePayload.Error error:
@@ -351,7 +353,8 @@ public static class FrameCodec
                 WindowStartSecs = reader.ReadInt64(),
                 WindowEndSecs = reader.ReadInt64(),
                 TotalCpuPercent = reader.ReadSingle(),
-                TotalMemoryBytes = reader.ReadUInt64(),
+                MemUsedBytes = reader.ReadUInt64(),
+                MemTotalBytes = reader.ReadUInt64(),
                 Processes = ReadProcessList(reader),
                 Truncated = reader.ReadBoolean()
             }),
@@ -365,8 +368,8 @@ public static class FrameCodec
 
             MessageType.Backpressure => new MessagePayload.Backpressure(new BackpressureSignal
             {
-                Level = reader.ReadByte(),
-                PauseSecs = ReadOptionalUInt32(reader)
+                ThrottleDelayMs = reader.ReadUInt32(),
+                Reason = ReadOptionalString(reader)
             }),
 
             MessageType.Error => new MessagePayload.Error(
@@ -390,6 +393,7 @@ public static class FrameCodec
                 Pid = reader.ReadUInt32(),
                 Name = ReadString(reader),
                 CpuPercent = reader.ReadSingle(),
+                MemoryPercent = reader.ReadSingle(),
                 MemoryBytes = reader.ReadUInt64(),
                 Cmdline = ReadOptionalString(reader)
             });

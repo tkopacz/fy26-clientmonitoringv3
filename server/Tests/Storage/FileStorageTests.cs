@@ -154,7 +154,8 @@ public class FileStorageTests : IDisposable
                 WindowStartSecs = 1703174400,
                 WindowEndSecs = 1703174410,
                 TotalCpuPercent = 50.0f,
-                TotalMemoryBytes = 8_000_000_000,
+                MemUsedBytes = 7_500_000_000,
+                MemTotalBytes = 8_000_000_000,
                 Processes = new List<ProcessSample>
                 {
                     new()
@@ -162,6 +163,7 @@ public class FileStorageTests : IDisposable
                         Pid = 1234,
                         Name = "test-process",
                         CpuPercent = 25.0f,
+                        MemoryPercent = 1.25f,
                         MemoryBytes = 100_000_000,
                         Cmdline = "/usr/bin/test"
                     }

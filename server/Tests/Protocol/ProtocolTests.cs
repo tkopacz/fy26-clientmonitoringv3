@@ -16,6 +16,14 @@ namespace MonitoringServer.Tests.Protocol;
 
 public class ProtocolTests
 {
+    // Test helper: Create a 16-byte message ID from a ulong for simplicity in tests
+    private static byte[] TestMessageId(ulong n)
+    {
+        var id = new byte[16];
+        BitConverter.GetBytes(n).CopyTo(id, 0);
+        return id;
+    }
+
     [Fact]
     public void ProtocolVersion_Compatibility_SameVersion()
     {
@@ -112,8 +120,10 @@ public class ProtocolTests
             {
                 Version = ProtocolVersion.Current,
                 MessageType = MessageType.Handshake,
-                MessageId = 1,
-                TimestampSecs = 1703174400,
+                MessageId = TestMessageId(1),
+                TimestampUtcMs = 1703174400000,
+                AgentId = "agent-123",
+                Platform = OsType.Windows,
                 Compressed = false
             },
             Payload = new MessagePayload.Handshake(identity)
@@ -128,7 +138,7 @@ public class ProtocolTests
         var decoded = await FrameCodec.DecodeAsync(ms);
 
         Assert.Equal(MessageType.Handshake, decoded.Envelope.MessageType);
-        Assert.Equal(1UL, decoded.Envelope.MessageId);
+        Assert.Equal(TestMessageId(1), decoded.Envelope.MessageId);
         
         var handshake = Assert.IsType<MessagePayload.Handshake>(decoded.Payload);
         Assert.Equal("agent-123", handshake.Identity.InstanceId);
@@ -144,7 +154,8 @@ public class ProtocolTests
             WindowStartSecs = 1703174400,
             WindowEndSecs = 1703174410,
             TotalCpuPercent = 25.5f,
-            TotalMemoryBytes = 8_000_000_000,
+            MemUsedBytes = 7_500_000_000,
+            MemTotalBytes = 8_000_000_000,
             Processes = new List<ProcessSample>
             {
                 new()
@@ -152,6 +163,7 @@ public class ProtocolTests
                     Pid = 1234,
                     Name = "test-process",
                     CpuPercent = 15.2f,
+                    MemoryPercent = 1.25f,
                     MemoryBytes = 100_000_000,
                     Cmdline = "/usr/bin/test"
                 },
@@ -160,6 +172,7 @@ public class ProtocolTests
                     Pid = 5678,
                     Name = "another-process",
                     CpuPercent = 10.3f,
+                    MemoryPercent = 0.625f,
                     MemoryBytes = 50_000_000,
                     Cmdline = null
                 }
@@ -173,8 +186,10 @@ public class ProtocolTests
             {
                 Version = ProtocolVersion.Current,
                 MessageType = MessageType.Snapshot,
-                MessageId = 42,
-                TimestampSecs = 1703174410,
+                MessageId = TestMessageId(42),
+                TimestampUtcMs = 1703174410000,
+                AgentId = "agent-123",
+                Platform = OsType.Linux,
                 Compressed = false
             },
             Payload = new MessagePayload.Snapshot(snapshot)
@@ -203,14 +218,16 @@ public class ProtocolTests
             {
                 Version = ProtocolVersion.Current,
                 MessageType = MessageType.Backpressure,
-                MessageId = 200,
-                TimestampSecs = 1703174420,
+                MessageId = TestMessageId(200),
+                TimestampUtcMs = 1703174420000,
+                AgentId = "agent-123",
+                Platform = OsType.Linux,
                 Compressed = false
             },
             Payload = new MessagePayload.Backpressure(new BackpressureSignal
             {
-                Level = 2,
-                PauseSecs = 30
+                ThrottleDelayMs = 5000,
+                Reason = "Server buffer threshold exceeded"
             })
         };
 
@@ -219,8 +236,44 @@ public class ProtocolTests
         var decoded = await FrameCodec.DecodeAsync(ms);
 
         var backpressure = Assert.IsType<MessagePayload.Backpressure>(decoded.Payload);
-        Assert.Equal((byte)2, backpressure.Signal.Level);
-        Assert.Equal(30u, backpressure.Signal.PauseSecs);
+        Assert.Equal(5000u, backpressure.Signal.ThrottleDelayMs);
+        Assert.Equal("Server buffer threshold exceeded", backpressure.Signal.Reason);
+    }
+
+    [Fact]
+    public void Backpressure_NoThrottle()
+    {
+        var bp = new BackpressureSignal
+        {
+            ThrottleDelayMs = 0,
+            Reason = null
+        };
+        
+        Assert.Equal(0u, bp.ThrottleDelayMs);
+    }
+
+    [Fact]
+    public void Backpressure_SmallDelay()
+    {
+        var bp = new BackpressureSignal
+        {
+            ThrottleDelayMs = 100,
+            Reason = "Light throttle"
+        };
+        
+        Assert.Equal(100u, bp.ThrottleDelayMs);
+    }
+
+    [Fact]
+    public void Backpressure_LargeDelay()
+    {
+        var bp = new BackpressureSignal
+        {
+            ThrottleDelayMs = 30000,
+            Reason = "Heavy throttle"
+        };
+        
+        Assert.Equal(30000u, bp.ThrottleDelayMs);
     }
 
     [Fact]
@@ -232,13 +285,15 @@ public class ProtocolTests
             {
                 Version = ProtocolVersion.Current,
                 MessageType = MessageType.Ack,
-                MessageId = 300,
-                TimestampSecs = 1703174430,
+                MessageId = TestMessageId(300),
+                TimestampUtcMs = 1703174430000,
+                AgentId = "agent-123",
+                Platform = OsType.Linux,
                 Compressed = false
             },
             Payload = new MessagePayload.Ack(new MessageAck
             {
-                MessageId = 42,
+                MessageId = TestMessageId(42),
                 Success = false,
                 ErrorCode = 1001
             })
@@ -249,7 +304,7 @@ public class ProtocolTests
         var decoded = await FrameCodec.DecodeAsync(ms);
 
         var ack = Assert.IsType<MessagePayload.Ack>(decoded.Payload);
-        Assert.Equal(42UL, ack.AckData.MessageId);
+        Assert.Equal(TestMessageId(42), ack.AckData.MessageId);
         Assert.False(ack.AckData.Success);
         Assert.Equal(1001u, ack.AckData.ErrorCode);
     }
@@ -263,13 +318,15 @@ public class ProtocolTests
             WindowStartSecs = 1703174400,
             WindowEndSecs = 1703174410,
             TotalCpuPercent = 100.0f,
-            TotalMemoryBytes = 32_000_000_000,
+            MemUsedBytes = 30_000_000_000,
+            MemTotalBytes = 32_000_000_000,
             Processes = Enumerable.Range(0, 10000)
                 .Select(i => new ProcessSample
                 {
                     Pid = (uint)i,
                     Name = $"very-long-process-name-{i}",
                     CpuPercent = 1.0f,
+                    MemoryPercent = 0.003125f,
                     MemoryBytes = 1_000_000,
                     Cmdline = $"/very/long/command/line/path/number/{i}/with/many/args"
                 })
@@ -283,8 +340,10 @@ public class ProtocolTests
             {
                 Version = ProtocolVersion.Current,
                 MessageType = MessageType.Snapshot,
-                MessageId = 999,
-                TimestampSecs = 1703174440,
+                MessageId = TestMessageId(999),
+                TimestampUtcMs = 1703174440000,
+                AgentId = "agent-123",
+                Platform = OsType.Linux,
                 Compressed = false
             },
             Payload = new MessagePayload.Snapshot(largeSnapshot)
@@ -343,7 +402,8 @@ public class ProtocolTests
 
         // Verify CPU and memory aggregates exist
         Assert.True(snapshot.Payload.TotalCpuPercent >= 0);
-        Assert.True(snapshot.Payload.TotalMemoryBytes >= 0);
+        Assert.True(snapshot.Payload.MemUsedBytes >= 0);
+        Assert.True(snapshot.Payload.MemTotalBytes >= 0);
 
         // Verify individual process samples
         foreach (var process in snapshot.Payload.Processes)
