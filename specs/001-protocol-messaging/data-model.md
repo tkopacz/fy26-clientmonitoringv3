@@ -3,12 +3,12 @@
 ## Entities
 
 ### ProtocolEnvelope
-- Fields: `version_major` (u8), `version_minor` (u8), `message_type` (u8 discriminant 1–7), `message_id` (opaque 16 bytes), `timestamp_utc` (i64, UTC Unix milliseconds; per-message send time), `agent_id` (string/uuid), `platform` (enum: windows, linux), `capabilities` (bit flags: compression, all_processes).
+- Fields: `version_major` (u8), `version_minor` (u8), `message_type` (u8 discriminant 1–7), `message_id` (opaque 16 bytes), `timestamp_utc` (i64, UTC Unix milliseconds; per-message send time), `agent_id` (string/uuid), `platform` (enum: windows, linux, macos), `capabilities` (bit flags: compression, all_processes, cmdline_included).
 - Relationships: Wraps one payload (Handshake, Snapshot, Heartbeat, Backpressure, Ack, Error).
 - Validation: Frame length prefix matches bytes read; CRC32 checksum validates; message_type within known range.
 
 ### Handshake
-- Fields: `min_version_major` (u8), `min_version_minor` (u8), `max_version_major` (u8), `max_version_minor` (u8), `agent_version` (string), `agent_id` (string/uuid), `os` (enum), `supports_all_processes` (bool), `supports_compression` (bool), `timestamp_utc` (i64).
+- Fields: `min_version_major` (u8), `min_version_minor` (u8), `max_version_major` (u8), `max_version_minor` (u8), `agent_version` (string), `agent_id` (string/uuid), `os` (enum), `supports_all_processes` (bool), `supports_compression` (bool), `cmdline_included` (bool), `timestamp_utc` (i64).
 - Validation: min_version <= max_version; agent_id non-empty.
 - State: Must precede snapshots; acknowledged by server.
 

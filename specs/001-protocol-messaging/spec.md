@@ -15,13 +15,17 @@
 - Q: What form should backpressure signaling take? → A: Throttle delay in milliseconds (numeric; agent adjusts send interval).
 - Q: For segmented snapshots, how should acks work? → A: Ack each part/frame (each part has its own messageId); persist once after full reassembly.
 
+### Session 2026-01-08
+
+- Q: For the macOS agent, should the feature set match Windows/Linux exactly? → A: macOS MUST support the core set (CPU/mem + top-N); all-process and cmdline MAY be omitted based on platform/permissions, and MUST be advertised via handshake capability flags.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ingest binary snapshots end-to-end (Priority: P1)
 
 An operator runs the .NET Linux server and receives binary monitoring
-snapshots from deployed Rust agents (Windows/Linux) that include CPU,
-memory, and top processes (or all processes when requested) and writes
+snapshots from deployed Rust agents (Windows, Linux, and macOS) that include CPU,
+memory, and top processes (or all processes when requested and supported) and writes
 them through the storage interface (initially append-to-file) without
 drops.
 
@@ -31,7 +35,7 @@ occur due to at-least-once retry and are de-duplicated by `messageId`.
 **Why this priority**: Core value is reliable telemetry delivery; no
 other functionality matters if ingest fails.
 
-**Independent Test**: Deploy one agent against the server, send a
+**Independent Test**: Deploy one agent (on Windows, Linux, or macOS) against the server, send a
 handshake and snapshots, verify storage append counts match sent
 messages and decoding preserves fields.
 
@@ -112,7 +116,8 @@ increments error counters, and both remain alive.
 
 - **FR-001**: The agent MUST collect CPU usage, memory usage, and top-N
   processes by CPU and memory with an option to send all processes on
-  request; macOS agents are out of scope.
+  request when supported. The agent MUST be implemented in Rust and support Windows, Linux, and macOS.
+  - The agent MUST advertise whether it supports all-process snapshots and whether it includes per-process command line data (when permitted) via handshake capability flags.
   - Default: `topN = 100` unless configured otherwise.
 - **FR-002**: A versioned binary protocol MUST define framing (length
   prefix and message type), envelope metadata (protocol version,
@@ -138,7 +143,7 @@ increments error counters, and both remain alive.
   recorded without failing the session.
 - **FR-004**: Handshake MUST include agent identity (instance id, OS
   type, agent version), supported protocol version range (min/max), and
-  capabilities (supports all-process option, compression if allowed) and
+  capabilities (supports all-process option, whether cmdline is included, compression if allowed) and
   receive server ack before snapshots are accepted.
 - **FR-005**: Snapshots MUST include sampling window start/end,
   aggregated CPU and memory (used bytes and total bytes), and per-process

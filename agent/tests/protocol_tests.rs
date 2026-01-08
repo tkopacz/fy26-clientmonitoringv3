@@ -93,7 +93,8 @@ fn agent_identity_capabilities_all_process() {
         instance_id: "agent-001".to_string(),
         os_type: OsType::Linux,
         agent_version: "0.1.0".to_string(),
-        protocol_version: ProtocolVersion::CURRENT,
+        min_protocol_version: ProtocolVersion::CURRENT,
+        max_protocol_version: ProtocolVersion::CURRENT,
         capabilities: AgentIdentity::CAP_ALL_PROCESS,
     };
     assert!(identity.supports_all_process());
@@ -106,7 +107,8 @@ fn agent_identity_capabilities_compression() {
         instance_id: "agent-002".to_string(),
         os_type: OsType::Windows,
         agent_version: "0.1.0".to_string(),
-        protocol_version: ProtocolVersion::CURRENT,
+        min_protocol_version: ProtocolVersion::CURRENT,
+        max_protocol_version: ProtocolVersion::CURRENT,
         capabilities: AgentIdentity::CAP_COMPRESSION,
     };
     assert!(!identity.supports_all_process());
@@ -120,7 +122,8 @@ fn agent_identity_capabilities_both() {
         instance_id: "agent-003".to_string(),
         os_type: OsType::Linux,
         agent_version: "0.1.0".to_string(),
-        protocol_version: ProtocolVersion::CURRENT,
+        min_protocol_version: ProtocolVersion::CURRENT,
+        max_protocol_version: ProtocolVersion::CURRENT,
         capabilities,
     };
     assert!(identity.supports_all_process());
@@ -150,7 +153,8 @@ fn encode_decode_handshake_message() {
             instance_id: "test-agent-001".to_string(),
             os_type: OsType::Linux,
             agent_version: "0.1.0".to_string(),
-            protocol_version: ProtocolVersion::CURRENT,
+            min_protocol_version: ProtocolVersion::CURRENT,
+        max_protocol_version: ProtocolVersion::CURRENT,
             capabilities: AgentIdentity::CAP_ALL_PROCESS | AgentIdentity::CAP_COMPRESSION,
         }),
     };
@@ -213,6 +217,9 @@ fn encode_decode_snapshot_message() {
                 },
             ],
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         }),
     };
 
@@ -354,6 +361,9 @@ fn encode_decode_with_compression() {
             memory_total_bytes: 16_000_000_000,
             processes,
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         }),
     };
 
@@ -433,6 +443,9 @@ fn frame_size_validation_oversized_payload() {
             memory_total_bytes: 32_000_000_000,
             processes,
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         }),
     };
 
@@ -493,6 +506,9 @@ fn cross_language_serialization_snapshot() {
             },
         ],
         truncated: false,
+        snapshot_id: None,
+        part_index: None,
+        part_count: None,
     };
 
     let message = Message {
@@ -624,6 +640,9 @@ fn snapshot_with_no_processes() {
             memory_total_bytes: 100_000_000,
             processes: vec![],
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         }),
     };
 
@@ -665,6 +684,9 @@ fn snapshot_with_truncation_flag() {
                 },
             ],
             truncated: true, // Flag indicates more processes were filtered out
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         }),
     };
 
