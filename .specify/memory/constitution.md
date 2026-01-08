@@ -19,16 +19,17 @@ Sync Impact Report
 <!-- Project: fy26-clientmonitoringv3 -->
 
 
-### Minimal Footprint Agent (Rust, Windows/Linux)
-The monitoring agent MUST be implemented in Rust and support Windows
-and Linux. It MUST minimize CPU and memory usage through efficient
+
+### Minimal Footprint Agent (Rust, Windows/Linux/macOS)
+The monitoring agent MUST be implemented in Rust and support Windows,
+Linux, and macOS. It MUST minimize CPU and memory usage through efficient
 sampling, zero-copy where practical, preallocated buffers, and avoiding
 blocking I/O on critical paths. Collection scope includes CPU usage,
 memory usage, and top processes by CPU and memory, with an option to
-report all processes when requested. Do not build client for macOS.
+report all processes when requested.
 
 Rationale: Rust enables predictable performance and low overhead across
-platforms; careful resource discipline keeps the agent unobtrusive.
+platforms; supporting macOS expands deployment flexibility and user reach.
 
 ### Scalable Linux .NET Server
 The server MUST run on Linux using .NET, utilize async I/O, and be
@@ -117,6 +118,22 @@ below.
 - Review Cadence: Quarterly compliance review with adjustments based on
 	operational feedback and test coverage metrics.
 
-**Version**: 1.0.0 | **Ratified**: 2025-01-06 | **Last Amended**: 2025-12-21
+
+<!--
+Sync Impact Report
+- Version change: 1.0.0 → 1.1.0
+- Modified principles:
+	- Minimal Footprint Agent (now requires Rust client for macOS)
+- Added sections: none
+- Removed sections: none
+- Templates requiring updates:
+	- ⚠ .specify/templates/plan-template.md (check for platform gates)
+	- ⚠ .specify/templates/spec-template.md (check for user story/test alignment)
+	- ⚠ .specify/templates/tasks-template.md (check for platform-specific tasks)
+- Follow-up TODOs:
+	- Review and update any platform-specific language in templates and docs
+-->
+
+**Version**: 1.1.0 | **Ratified**: 2025-01-06 | **Last Amended**: 2026-01-08
 
 

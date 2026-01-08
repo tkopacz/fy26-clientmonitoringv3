@@ -3,12 +3,16 @@
 description: "Task list template for feature implementation"
 ---
 
+
 # Tasks: [FEATURE NAME]
 
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
+
 **Tests**: Per the Constitution, tests are MANDATORY. Include unit tests for every module/function and combination/integration tests for end-to-end logic. Use mocks/fakes where needed to isolate components. Write tests first and ensure they fail before implementation.
+
+**Platform**: Agent client MUST be implemented in Rust and support Windows, Linux, and macOS.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 

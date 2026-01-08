@@ -47,3 +47,13 @@ All decisions above are consistent with the clarifications recorded in `spec.md`
 - ✅ Oversize snapshot handling (segmentation with snapshotId + reassembly)
 - ✅ Backpressure signaling (throttleDelayMs numeric)
 - ✅ Segmented snapshot acks (per-part acknowledgment)
+
+## macOS capability gating
+- Decision: Require macOS agent support, but allow platform/permission-driven capability differences for all-process snapshots and command-line fields. These MUST be advertised via handshake capability flags.
+- Rationale: macOS process visibility and cmdline access can vary by permissions; capability negotiation avoids fragile “must succeed” behavior while keeping the protocol consistent.
+- Alternatives considered: Enforce strict parity (too brittle); drop macOS support (conflicts with constitution).
+
+## Plaintext transport default posture
+- Decision: Plaintext transport is for local/dev only and MUST be explicitly opted-in; default posture should be “secure by default” with clear documentation prohibiting plaintext in production.
+- Rationale: Aligns with the spec’s requirement to document risks and prohibit plaintext in production deployments; reduces accidental insecure deploys.
+- Alternatives considered: Enable plaintext by default with warnings (easier dev, higher risk); allow plaintext always (documentation-only enforcement).

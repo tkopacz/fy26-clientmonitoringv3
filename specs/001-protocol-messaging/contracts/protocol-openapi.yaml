@@ -58,13 +58,15 @@ components:
           type: string
         platform:
           type: string
-          enum: [windows, linux]
+          enum: [windows, linux, macos]
         capabilities:
           type: object
           properties:
             supportsCompression:
               type: boolean
             supportsAllProcesses:
+              type: boolean
+            cmdlineIncluded:
               type: boolean
     Snapshot:
       type: object
