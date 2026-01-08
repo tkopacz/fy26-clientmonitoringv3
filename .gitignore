@@ -420,3 +420,15 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+# Universal OS/Editor files
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env*
+!.env.example
+

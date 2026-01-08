@@ -103,7 +103,7 @@ pub enum OsType {
 
 /// Agent identity information sent during handshake.
 ///
-/// Includes instance ID, OS type, version, and capability flags.
+/// Includes instance ID, OS type, version, supported protocol range, and capability flags.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentIdentity {
     /// Unique instance identifier for this agent
@@ -112,8 +112,10 @@ pub struct AgentIdentity {
     pub os_type: OsType,
     /// Agent version string
     pub agent_version: String,
-    /// Protocol version supported by this agent
-    pub protocol_version: ProtocolVersion,
+    /// Minimum protocol version supported by this agent
+    pub min_protocol_version: ProtocolVersion,
+    /// Maximum protocol version supported by this agent
+    pub max_protocol_version: ProtocolVersion,
     /// Capability flags (bit 0: supports all-process mode, bit 1: compression)
     pub capabilities: u32,
 }
@@ -157,6 +159,7 @@ pub struct ProcessSample {
 /// Monitoring snapshot payload.
 ///
 /// Contains aggregated CPU/memory metrics and per-process samples.
+/// Supports segmentation for large snapshots (e.g., all-process mode).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotPayload {
     /// Sampling window start timestamp (Unix epoch seconds)
@@ -173,6 +176,15 @@ pub struct SnapshotPayload {
     pub processes: Vec<ProcessSample>,
     /// True if process list was truncated to fit size cap
     pub truncated: bool,
+    /// Unique snapshot identifier (opaque 16-byte ID, shared across all parts of a segmented snapshot)
+    /// None for unsegmented snapshots (single-part delivery)
+    pub snapshot_id: Option<[u8; 16]>,
+    /// Zero-based part index (0 for first part, 1 for second, etc.)
+    /// None for unsegmented snapshots
+    pub part_index: Option<u16>,
+    /// Total number of parts in the segmented snapshot
+    /// None for unsegmented snapshots
+    pub part_count: Option<u16>,
 }
 
 /// Backpressure signal from server to agent.
@@ -185,6 +197,17 @@ pub struct BackpressureSignal {
     pub throttle_delay_ms: u32,
     /// Optional reason string for logging/diagnostics
     pub reason: Option<String>,
+}
+
+/// Handshake acknowledgment payload from server to agent.
+///
+/// Communicates the negotiated protocol version and compression setting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HandshakeAckPayload {
+    /// Protocol version chosen by server (highest mutually supported)
+    pub chosen_version: ProtocolVersion,
+    /// Whether compression is enabled for this session
+    pub compression_enabled: bool,
 }
 
 /// Message acknowledgment with status and optional error code.
@@ -234,7 +257,7 @@ pub struct Message {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MessagePayload {
     Handshake(AgentIdentity),
-    HandshakeAck,
+    HandshakeAck(HandshakeAckPayload),
     Heartbeat,
     Snapshot(SnapshotPayload),
     Ack(MessageAck),
@@ -317,11 +340,17 @@ impl FrameCodec {
                 write_string(&mut payload_bytes, &identity.instance_id);
                 payload_bytes.push(identity.os_type as u8);
                 write_string(&mut payload_bytes, &identity.agent_version);
-                payload_bytes.push(identity.protocol_version.major);
-                payload_bytes.push(identity.protocol_version.minor);
+                payload_bytes.push(identity.min_protocol_version.major);
+                payload_bytes.push(identity.min_protocol_version.minor);
+                payload_bytes.push(identity.max_protocol_version.major);
+                payload_bytes.push(identity.max_protocol_version.minor);
                 payload_bytes.extend_from_slice(&identity.capabilities.to_le_bytes());
             }
-            MessagePayload::HandshakeAck => {}
+            MessagePayload::HandshakeAck(ack) => {
+                payload_bytes.push(ack.chosen_version.major);
+                payload_bytes.push(ack.chosen_version.minor);
+                payload_bytes.push(ack.compression_enabled as u8);
+            }
             MessagePayload::Heartbeat => {}
             MessagePayload::Snapshot(snapshot) => {
                 payload_bytes.extend_from_slice(&snapshot.window_start_secs.to_le_bytes());
@@ -342,6 +371,17 @@ impl FrameCodec {
                 }
 
                 payload_bytes.push(if snapshot.truncated { 1 } else { 0 });
+                
+                // Write optional segmentation fields
+                if let Some(snapshot_id) = snapshot.snapshot_id {
+                    payload_bytes.extend_from_slice(&snapshot_id);
+                }
+                if let Some(part_index) = snapshot.part_index {
+                    payload_bytes.extend_from_slice(&part_index.to_le_bytes());
+                }
+                if let Some(part_count) = snapshot.part_count {
+                    payload_bytes.extend_from_slice(&part_count.to_le_bytes());
+                }
             }
             MessagePayload::Ack(ack) => {
                 payload_bytes.extend_from_slice(&ack.message_id);
@@ -471,8 +511,10 @@ impl FrameCodec {
                 let instance_id = read_string(&mut payload_cursor)?;
                 let os_type_raw = read_u8(&mut payload_cursor)?;
                 let agent_version = read_string(&mut payload_cursor)?;
-                let proto_major = read_u8(&mut payload_cursor)?;
-                let proto_minor = read_u8(&mut payload_cursor)?;
+                let min_proto_major = read_u8(&mut payload_cursor)?;
+                let min_proto_minor = read_u8(&mut payload_cursor)?;
+                let max_proto_major = read_u8(&mut payload_cursor)?;
+                let max_proto_minor = read_u8(&mut payload_cursor)?;
                 let capabilities = read_u32_le(&mut payload_cursor)?;
 
                 MessagePayload::Handshake(AgentIdentity {
@@ -483,14 +525,30 @@ impl FrameCodec {
                         other => return Err(ProtocolError::InvalidMessageType(other)),
                     },
                     agent_version,
-                    protocol_version: ProtocolVersion {
-                        major: proto_major,
-                        minor: proto_minor,
+                    min_protocol_version: ProtocolVersion {
+                        major: min_proto_major,
+                        minor: min_proto_minor,
+                    },
+                    max_protocol_version: ProtocolVersion {
+                        major: max_proto_major,
+                        minor: max_proto_minor,
                     },
                     capabilities,
                 })
             }
-            MessageType::HandshakeAck => MessagePayload::HandshakeAck,
+            MessageType::HandshakeAck => {
+                let chosen_major = read_u8(&mut payload_cursor)?;
+                let chosen_minor = read_u8(&mut payload_cursor)?;
+                let compression_enabled = read_u8(&mut payload_cursor)? != 0;
+                
+                MessagePayload::HandshakeAck(HandshakeAckPayload {
+                    chosen_version: ProtocolVersion {
+                        major: chosen_major,
+                        minor: chosen_minor,
+                    },
+                    compression_enabled,
+                })
+            }
             MessageType::Heartbeat => MessagePayload::Heartbeat,
             MessageType::Snapshot => {
                 let window_start_secs = read_i64_le(&mut payload_cursor)?;
@@ -520,6 +578,30 @@ impl FrameCodec {
                 }
 
                 let truncated = read_bool(&mut payload_cursor)?;
+                
+                // Read optional segmentation fields
+                let snapshot_id = if payload_cursor.position() < payload_bytes.len() as u64 {
+                    let mut id = [0u8; 16];
+                    if payload_cursor.read_exact(&mut id).is_ok() {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                
+                let part_index = if payload_cursor.position() < payload_bytes.len() as u64 {
+                    read_u16_le(&mut payload_cursor).ok()
+                } else {
+                    None
+                };
+                
+                let part_count = if payload_cursor.position() < payload_bytes.len() as u64 {
+                    read_u16_le(&mut payload_cursor).ok()
+                } else {
+                    None
+                };
 
                 MessagePayload::Snapshot(SnapshotPayload {
                     window_start_secs,
@@ -529,6 +611,9 @@ impl FrameCodec {
                     memory_total_bytes,
                     processes,
                     truncated,
+                    snapshot_id,
+                    part_index,
+                    part_count,
                 })
             }
             MessageType::Ack => {
@@ -623,6 +708,12 @@ fn read_u32_le<R: Read>(reader: &mut R) -> Result<u32, ProtocolError> {
     Ok(u32::from_le_bytes(buf))
 }
 
+fn read_u16_le<R: Read>(reader: &mut R) -> Result<u16, ProtocolError> {
+    let mut buf = [0u8; 2];
+    reader.read_exact(&mut buf)?;
+    Ok(u16::from_le_bytes(buf))
+}
+
 fn read_u64_le<R: Read>(reader: &mut R) -> Result<u64, ProtocolError> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)?;
@@ -705,7 +796,8 @@ mod tests {
             instance_id: "test-001".to_string(),
             os_type: OsType::Linux,
             agent_version: "0.1.0".to_string(),
-            protocol_version: ProtocolVersion::CURRENT,
+            min_protocol_version: ProtocolVersion::CURRENT,
+            max_protocol_version: ProtocolVersion::CURRENT,
             capabilities: AgentIdentity::CAP_ALL_PROCESS | AgentIdentity::CAP_COMPRESSION,
         };
 
@@ -734,7 +826,8 @@ mod tests {
             instance_id: "agent-123".to_string(),
             os_type: OsType::Windows,
             agent_version: "0.1.0".to_string(),
-            protocol_version: ProtocolVersion::CURRENT,
+            min_protocol_version: ProtocolVersion::CURRENT,
+            max_protocol_version: ProtocolVersion::CURRENT,
             capabilities: AgentIdentity::CAP_COMPRESSION,
         };
 
@@ -800,6 +893,9 @@ mod tests {
                 },
             ],
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         };
 
         let message = Message {
@@ -852,6 +948,9 @@ mod tests {
                 })
                 .collect(),
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         };
 
         let message = Message {
@@ -982,6 +1081,9 @@ mod tests {
                 })
                 .collect(),
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         };
 
         let message = Message {
@@ -1053,6 +1155,9 @@ mod tests {
                 },
             ],
             truncated: false,
+            snapshot_id: None,
+            part_index: None,
+            part_count: None,
         };
 
         let message = Message {
