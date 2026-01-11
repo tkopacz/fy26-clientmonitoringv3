@@ -69,6 +69,13 @@ cd /home/tkopacz/fy26-clientmonitoringv3/server
 dotnet test Tests/MonitoringServer.Tests.csproj
 ```
 
+## Demo Protocol (Rust → file → .NET)
+
+See [specs/002-demo-protocol/quickstart.md](specs/002-demo-protocol/quickstart.md) for the end-to-end demo:
+
+- Rust producer: `cargo run -p agent --bin demo_protocol_producer`
+- .NET consumer: `dotnet run --project server/DemoProtocolConsumer`
+
 ## Key Features
 
 - **Version negotiation**: Major/minor compatibility checking
