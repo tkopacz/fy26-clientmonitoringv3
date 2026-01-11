@@ -117,6 +117,9 @@ public sealed class ProcessSample
     /// <summary>CPU usage percentage (0.0 - 100.0)</summary>
     public required float CpuPercent { get; init; }
 
+    /// <summary>Memory usage percentage of total system memory (0.0 - 100.0)</summary>
+    public required float MemoryPercent { get; init; }
+
     /// <summary>Memory usage in bytes (RSS)</summary>
     public required ulong MemoryBytes { get; init; }
 
@@ -139,8 +142,11 @@ public sealed class SnapshotPayload
     /// <summary>Aggregate CPU usage percentage (0.0 - 100.0)</summary>
     public required float TotalCpuPercent { get; init; }
 
-    /// <summary>Aggregate memory usage in bytes</summary>
-    public required ulong TotalMemoryBytes { get; init; }
+    /// <summary>Memory currently in use (bytes)</summary>
+    public required ulong MemUsedBytes { get; init; }
+
+    /// <summary>Total system memory (bytes)</summary>
+    public required ulong MemTotalBytes { get; init; }
 
     /// <summary>Process samples (ordered by CPU, truncated if needed)</summary>
     public required List<ProcessSample> Processes { get; init; }
@@ -151,15 +157,18 @@ public sealed class SnapshotPayload
 
 /// <summary>
 /// Backpressure signal from server to agent.
-/// Instructs agent to slow or pause sending.
+/// Instructs agent to throttle its send rate by applying a delay.
 /// </summary>
 public sealed class BackpressureSignal
 {
-    /// <summary>Throttle level (0 = normal, 1 = slow down, 2 = pause)</summary>
-    public required byte Level { get; init; }
+    /// <summary>
+    /// Throttle delay in milliseconds (0 = no throttle).
+    /// Agent applies: effectiveIntervalMs = max(configuredSnapshotIntervalMs, throttleDelayMs)
+    /// </summary>
+    public required uint ThrottleDelayMs { get; init; }
 
-    /// <summary>Optional pause duration in seconds</summary>
-    public uint? PauseSecs { get; init; }
+    /// <summary>Optional reason string for logging/diagnostics</summary>
+    public string? Reason { get; init; }
 }
 
 /// <summary>

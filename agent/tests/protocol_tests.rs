@@ -18,6 +18,13 @@
 use agent::protocol::*;
 use std::io::Cursor;
 
+// Test helper: Create a 16-byte message ID from a u64 for simplicity in tests
+fn test_message_id(n: u64) -> [u8; 16] {
+    let mut id = [0u8; 16];
+    id[0..8].copy_from_slice(&n.to_le_bytes());
+    id
+}
+
 // ============================================================================
 // Module: Protocol Version Compatibility Tests
 // ============================================================================
@@ -133,8 +140,10 @@ fn encode_decode_handshake_message() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Handshake,
-            message_id: 1,
-            timestamp_secs: 1703174400,
+            message_id: test_message_id(1),
+            timestamp_utc_ms: 1703174400000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Handshake(AgentIdentity {
@@ -165,20 +174,24 @@ fn encode_decode_snapshot_message() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 42,
-            timestamp_secs: 1703174405,
+            message_id: test_message_id(42),
+            timestamp_utc_ms: 1703174405000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Snapshot(SnapshotPayload {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
             total_cpu_percent: 45.5,
-            total_memory_bytes: 8_000_000_000,
+            memory_used_bytes: 7_500_000_000,
+            memory_total_bytes: 8_000_000_000,
             processes: vec![
                 ProcessSample {
                     pid: 1001,
                     name: "chrome".to_string(),
                     cpu_percent: 25.0,
+                    memory_percent: 25.0,
                     memory_bytes: 2_000_000_000,
                     cmdline: Some("/usr/bin/chrome --user-data-dir=~/.config/google-chrome".to_string()),
                 },
@@ -186,6 +199,7 @@ fn encode_decode_snapshot_message() {
                     pid: 1002,
                     name: "rust-app".to_string(),
                     cpu_percent: 15.0,
+                    memory_percent: 6.25,
                     memory_bytes: 500_000_000,
                     cmdline: Some("/home/user/app/rust-app".to_string()),
                 },
@@ -193,6 +207,7 @@ fn encode_decode_snapshot_message() {
                     pid: 1003,
                     name: "sshd".to_string(),
                     cpu_percent: 5.5,
+                    memory_percent: 1.25,
                     memory_bytes: 100_000_000,
                     cmdline: None,
                 },
@@ -206,7 +221,7 @@ fn encode_decode_snapshot_message() {
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode snapshot");
 
     assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
-    assert_eq!(decoded.envelope.message_id, 42);
+    assert_eq!(decoded.envelope.message_id, test_message_id(42));
 }
 
 #[test]
@@ -215,12 +230,14 @@ fn encode_decode_ack_message() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Ack,
-            message_id: 100,
-            timestamp_secs: 1703174410,
+            message_id: test_message_id(100),
+            timestamp_utc_ms: 1703174410000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Ack(MessageAck {
-            message_id: 99,
+            message_id: test_message_id(99),
             success: true,
             error_code: None,
         }),
@@ -239,13 +256,15 @@ fn encode_decode_backpressure_message() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Backpressure,
-            message_id: 50,
-            timestamp_secs: 1703174415,
+            message_id: test_message_id(50),
+            timestamp_utc_ms: 1703174415000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Backpressure(BackpressureSignal {
-            level: 1,
-            pause_secs: Some(5),
+            throttle_delay_ms: 5000,
+            reason: Some("Server buffer threshold exceeded".to_string()),
         }),
     };
 
@@ -254,6 +273,45 @@ fn encode_decode_backpressure_message() {
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode backpressure");
 
     assert_eq!(decoded.envelope.message_type, MessageType::Backpressure);
+    
+    match decoded.payload {
+        MessagePayload::Backpressure(bp) => {
+            assert_eq!(bp.throttle_delay_ms, 5000);
+            assert_eq!(bp.reason, Some("Server buffer threshold exceeded".to_string()));
+        }
+        _ => panic!("Expected Backpressure payload"),
+    }
+}
+
+// Additional tests for throttleDelayMs interpretation
+#[test]
+fn backpressure_no_throttle() {
+    let bp = BackpressureSignal {
+        throttle_delay_ms: 0,
+        reason: None,
+    };
+    
+    assert_eq!(bp.throttle_delay_ms, 0, "0 means no throttle");
+}
+
+#[test]
+fn backpressure_small_delay() {
+    let bp = BackpressureSignal {
+        throttle_delay_ms: 100,
+        reason: Some("Light throttle".to_string()),
+    };
+    
+    assert_eq!(bp.throttle_delay_ms, 100, "Small delay for light throttle");
+}
+
+#[test]
+fn backpressure_large_delay() {
+    let bp = BackpressureSignal {
+        throttle_delay_ms: 30000,
+        reason: Some("Heavy throttle".to_string()),
+    };
+    
+    assert_eq!(bp.throttle_delay_ms, 30000, "Large delay for heavy throttle");
 }
 
 // ============================================================================
@@ -272,6 +330,7 @@ fn encode_decode_with_compression() {
             pid: 2000 + i,
             name: format!("process-{:03}", i),
             cpu_percent: (i as f32) * 0.1,
+            memory_percent: (i as f32) * 0.05,
             memory_bytes: (i as u64) * 1_000_000,
             cmdline: Some(format!("/usr/bin/process-{:03} --arg1=value{} --arg2=/path/to/file", i, i)),
         });
@@ -281,15 +340,18 @@ fn encode_decode_with_compression() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 200,
-            timestamp_secs: 1703174420,
+            message_id: test_message_id(200),
+            timestamp_utc_ms: 1703174420000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: true, // Enable compression
         },
         payload: MessagePayload::Snapshot(SnapshotPayload {
             window_start_secs: 1703174410,
             window_end_secs: 1703174420,
             total_cpu_percent: 75.0,
-            total_memory_bytes: 16_000_000_000,
+            memory_used_bytes: 15_000_000_000,
+            memory_total_bytes: 16_000_000_000,
             processes,
             truncated: false,
         }),
@@ -303,7 +365,9 @@ fn encode_decode_with_compression() {
             version: message.envelope.version,
             message_type: message.envelope.message_type,
             message_id: message.envelope.message_id,
-            timestamp_secs: message.envelope.timestamp_secs,
+            timestamp_utc_ms: message.envelope.timestamp_utc_ms,
+            agent_id: message.envelope.agent_id.clone(),
+            platform: message.envelope.platform,
             compressed: false,
         },
         payload: message.payload.clone(),
@@ -321,7 +385,7 @@ fn encode_decode_with_compression() {
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode compressed message");
     
     assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
-    assert_eq!(decoded.envelope.message_id, 200);
+    assert_eq!(decoded.envelope.message_id, test_message_id(200));
 }
 
 // ============================================================================
@@ -342,6 +406,7 @@ fn frame_size_validation_oversized_payload() {
             pid: i as u32,
             name: format!("very-long-process-name-with-lots-of-characters-{:05}", i),
             cpu_percent: 1.0,
+            memory_percent: 0.5,
             memory_bytes: 1_000_000,
             cmdline: Some(format!(
                 "/very/long/command/line/path/with/many/arguments/and/environment/variables/{:05}",
@@ -354,15 +419,18 @@ fn frame_size_validation_oversized_payload() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 999,
-            timestamp_secs: 1703174425,
+            message_id: test_message_id(999),
+            timestamp_utc_ms: 1703174425000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Snapshot(SnapshotPayload {
             window_start_secs: 1703174400,
             window_end_secs: 1703174430,
             total_cpu_percent: 100.0,
-            total_memory_bytes: 32_000_000_000,
+            memory_used_bytes: 30_000_000_000,
+            memory_total_bytes: 32_000_000_000,
             processes,
             truncated: false,
         }),
@@ -396,12 +464,14 @@ fn cross_language_serialization_snapshot() {
         window_start_secs: 1703174400,
         window_end_secs: 1703174410,
         total_cpu_percent: 75.5,
-        total_memory_bytes: 16_000_000_000,
+        memory_used_bytes: 15_000_000_000,
+        memory_total_bytes: 16_000_000_000,
         processes: vec![
             ProcessSample {
                 pid: 1001,
                 name: "chrome".to_string(),
                 cpu_percent: 45.0,
+                memory_percent: 12.5,
                 memory_bytes: 2_000_000_000,
                 cmdline: Some("/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome".to_string()),
             },
@@ -409,6 +479,7 @@ fn cross_language_serialization_snapshot() {
                 pid: 1002,
                 name: "firefox".to_string(),
                 cpu_percent: 20.0,
+                memory_percent: 9.375,
                 memory_bytes: 1_500_000_000,
                 cmdline: Some("/usr/bin/firefox".to_string()),
             },
@@ -416,6 +487,7 @@ fn cross_language_serialization_snapshot() {
                 pid: 1003,
                 name: "code".to_string(),
                 cpu_percent: 10.5,
+                memory_percent: 5.0,
                 memory_bytes: 800_000_000,
                 cmdline: None,
             },
@@ -427,8 +499,10 @@ fn cross_language_serialization_snapshot() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 42,
-            timestamp_secs: 1703174405,
+            message_id: test_message_id(42),
+            timestamp_utc_ms: 1703174405000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Snapshot(snapshot),
@@ -440,7 +514,7 @@ fn cross_language_serialization_snapshot() {
     // Verify it's decodable on Rust side first
     let mut cursor = std::io::Cursor::new(&encoded);
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode");
-    assert_eq!(decoded.envelope.message_id, 42);
+    assert_eq!(decoded.envelope.message_id, test_message_id(42));
     assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
     
     // Write to file for cross-language testing
@@ -485,8 +559,10 @@ fn heartbeat_message_minimal_payload() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Heartbeat,
-            message_id: 0,
-            timestamp_secs: 1703174430,
+            message_id: test_message_id(0),
+            timestamp_utc_ms: 1703174430000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Heartbeat,
@@ -498,7 +574,7 @@ fn heartbeat_message_minimal_payload() {
 
     assert_eq!(decoded.envelope.message_type, MessageType::Heartbeat);
     // Frame should be small since there's no payload
-    assert!(encoded.len() < 100, "Heartbeat frame should be small");
+    assert!(encoded.len() < 200, "Heartbeat frame should be small");
 }
 
 #[test]
@@ -508,8 +584,10 @@ fn error_message_with_details() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Error,
-            message_id: 555,
-            timestamp_secs: 1703174435,
+            message_id: test_message_id(555),
+            timestamp_utc_ms: 1703174435000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Error {
@@ -532,15 +610,18 @@ fn snapshot_with_no_processes() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 10,
-            timestamp_secs: 1703174440,
+            message_id: test_message_id(10),
+            timestamp_utc_ms: 1703174440000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Snapshot(SnapshotPayload {
             window_start_secs: 1703174435,
             window_end_secs: 1703174440,
             total_cpu_percent: 0.1,
-            total_memory_bytes: 100_000_000,
+            memory_used_bytes: 95_000_000,
+            memory_total_bytes: 100_000_000,
             processes: vec![],
             truncated: false,
         }),
@@ -561,20 +642,24 @@ fn snapshot_with_truncation_flag() {
         envelope: Envelope {
             version: ProtocolVersion::CURRENT,
             message_type: MessageType::Snapshot,
-            message_id: 11,
-            timestamp_secs: 1703174445,
+            message_id: test_message_id(11),
+            timestamp_utc_ms: 1703174445000,
+            agent_id: "test-agent-001".to_string(),
+            platform: OsType::Linux,
             compressed: false,
         },
         payload: MessagePayload::Snapshot(SnapshotPayload {
             window_start_secs: 1703174440,
             window_end_secs: 1703174445,
             total_cpu_percent: 95.0,
-            total_memory_bytes: 30_000_000_000,
+            memory_used_bytes: 28_000_000_000,
+            memory_total_bytes: 30_000_000_000,
             processes: vec![
                 ProcessSample {
                     pid: 1,
                     name: "init".to_string(),
                     cpu_percent: 0.1,
+                    memory_percent: 0.003,
                     memory_bytes: 1_000_000,
                     cmdline: None,
                 },

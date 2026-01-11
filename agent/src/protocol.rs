@@ -146,6 +146,8 @@ pub struct ProcessSample {
     pub name: String,
     /// CPU usage percentage (0.0 - 100.0)
     pub cpu_percent: f32,
+    /// Memory usage percentage of total system memory (0.0 - 100.0)
+    pub memory_percent: f32,
     /// Memory usage in bytes (RSS)
     pub memory_bytes: u64,
     /// Optional command line (may be omitted for privacy/performance)
@@ -163,8 +165,10 @@ pub struct SnapshotPayload {
     pub window_end_secs: i64,
     /// Aggregate CPU usage percentage (0.0 - 100.0)
     pub total_cpu_percent: f32,
-    /// Aggregate memory usage in bytes
-    pub total_memory_bytes: u64,
+    /// Memory currently in use (bytes)
+    pub memory_used_bytes: u64,
+    /// Total system memory (bytes)
+    pub memory_total_bytes: u64,
     /// Process samples (ordered by CPU, truncated if needed)
     pub processes: Vec<ProcessSample>,
     /// True if process list was truncated to fit size cap
@@ -173,13 +177,14 @@ pub struct SnapshotPayload {
 
 /// Backpressure signal from server to agent.
 ///
-/// Instructs agent to slow or pause sending.
+/// Instructs agent to throttle its send rate by applying a delay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackpressureSignal {
-    /// Throttle level (0 = normal, 1 = slow down, 2 = pause)
-    pub level: u8,
-    /// Optional pause duration in seconds
-    pub pause_secs: Option<u32>,
+    /// Throttle delay in milliseconds (0 = no throttle)
+    /// Agent applies: effectiveIntervalMs = max(configuredSnapshotIntervalMs, throttleDelayMs)
+    pub throttle_delay_ms: u32,
+    /// Optional reason string for logging/diagnostics
+    pub reason: Option<String>,
 }
 
 /// Message acknowledgment with status and optional error code.
@@ -322,7 +327,8 @@ impl FrameCodec {
                 payload_bytes.extend_from_slice(&snapshot.window_start_secs.to_le_bytes());
                 payload_bytes.extend_from_slice(&snapshot.window_end_secs.to_le_bytes());
                 payload_bytes.extend_from_slice(&snapshot.total_cpu_percent.to_le_bytes());
-                payload_bytes.extend_from_slice(&snapshot.total_memory_bytes.to_le_bytes());
+                payload_bytes.extend_from_slice(&snapshot.memory_used_bytes.to_le_bytes());
+                payload_bytes.extend_from_slice(&snapshot.memory_total_bytes.to_le_bytes());
 
                 let count = snapshot.processes.len() as u64;
                 payload_bytes.extend_from_slice(&count.to_le_bytes());
@@ -330,6 +336,7 @@ impl FrameCodec {
                     payload_bytes.extend_from_slice(&process.pid.to_le_bytes());
                     write_string(&mut payload_bytes, &process.name);
                     payload_bytes.extend_from_slice(&process.cpu_percent.to_le_bytes());
+                    payload_bytes.extend_from_slice(&process.memory_percent.to_le_bytes());
                     payload_bytes.extend_from_slice(&process.memory_bytes.to_le_bytes());
                     write_optional_string(&mut payload_bytes, process.cmdline.as_deref());
                 }
@@ -342,8 +349,8 @@ impl FrameCodec {
                 write_optional_u32(&mut payload_bytes, ack.error_code);
             }
             MessagePayload::Backpressure(bp) => {
-                payload_bytes.push(bp.level);
-                write_optional_u32(&mut payload_bytes, bp.pause_secs);
+                payload_bytes.extend_from_slice(&bp.throttle_delay_ms.to_le_bytes());
+                write_optional_string(&mut payload_bytes, bp.reason.as_deref());
             }
             MessagePayload::Error { code, message } => {
                 payload_bytes.extend_from_slice(&code.to_le_bytes());
@@ -489,7 +496,8 @@ impl FrameCodec {
                 let window_start_secs = read_i64_le(&mut payload_cursor)?;
                 let window_end_secs = read_i64_le(&mut payload_cursor)?;
                 let total_cpu_percent = read_f32_le(&mut payload_cursor)?;
-                let total_memory_bytes = read_u64_le(&mut payload_cursor)?;
+                let memory_used_bytes = read_u64_le(&mut payload_cursor)?;
+                let memory_total_bytes = read_u64_le(&mut payload_cursor)?;
 
                 let process_count = read_u64_le(&mut payload_cursor)?;
                 let mut processes = Vec::with_capacity(process_count as usize);
@@ -497,6 +505,7 @@ impl FrameCodec {
                     let pid = read_u32_le(&mut payload_cursor)?;
                     let name = read_string(&mut payload_cursor)?;
                     let cpu_percent = read_f32_le(&mut payload_cursor)?;
+                    let memory_percent = read_f32_le(&mut payload_cursor)?;
                     let memory_bytes = read_u64_le(&mut payload_cursor)?;
                     let cmdline = read_optional_string(&mut payload_cursor)?;
 
@@ -504,6 +513,7 @@ impl FrameCodec {
                         pid,
                         name,
                         cpu_percent,
+                        memory_percent,
                         memory_bytes,
                         cmdline,
                     });
@@ -515,7 +525,8 @@ impl FrameCodec {
                     window_start_secs,
                     window_end_secs,
                     total_cpu_percent,
-                    total_memory_bytes,
+                    memory_used_bytes,
+                    memory_total_bytes,
                     processes,
                     truncated,
                 })
@@ -533,10 +544,10 @@ impl FrameCodec {
                 })
             }
             MessageType::Backpressure => {
-                let level = read_u8(&mut payload_cursor)?;
-                let pause_secs = read_optional_u32(&mut payload_cursor)?;
+                let throttle_delay_ms = read_u32_le(&mut payload_cursor)?;
+                let reason = read_optional_string(&mut payload_cursor)?;
 
-                MessagePayload::Backpressure(BackpressureSignal { level, pause_secs })
+                MessagePayload::Backpressure(BackpressureSignal { throttle_delay_ms, reason })
             }
             MessageType::Error => {
                 let code = read_u32_le(&mut payload_cursor)?;
@@ -768,12 +779,14 @@ mod tests {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
             total_cpu_percent: 25.5,
-            total_memory_bytes: 8_000_000_000,
+            memory_used_bytes: 7_500_000_000,
+            memory_total_bytes: 8_000_000_000,
             processes: vec![
                 ProcessSample {
                     pid: 1234,
                     name: "test-process".to_string(),
                     cpu_percent: 15.2,
+                    memory_percent: 1.25,
                     memory_bytes: 100_000_000,
                     cmdline: Some("/usr/bin/test".to_string()),
                 },
@@ -781,6 +794,7 @@ mod tests {
                     pid: 5678,
                     name: "another-process".to_string(),
                     cpu_percent: 10.3,
+                    memory_percent: 0.625,
                     memory_bytes: 50_000_000,
                     cmdline: None,
                 },
@@ -825,12 +839,14 @@ mod tests {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
             total_cpu_percent: 50.0,
-            total_memory_bytes: 16_000_000_000,
+            memory_used_bytes: 15_000_000_000,
+            memory_total_bytes: 16_000_000_000,
             processes: (0..100)
                 .map(|i| ProcessSample {
                     pid: 1000 + i,
                     name: format!("process-{}", i),
                     cpu_percent: 0.5,
+                    memory_percent: 0.0625,
                     memory_bytes: 10_000_000,
                     cmdline: Some(format!("/usr/bin/app-{}", i)),
                 })
@@ -858,9 +874,9 @@ mod tests {
         let uncompressed_message = Message {
             envelope: Envelope {
                 compressed: false,
-                ..message.envelope
+                ..message.envelope.clone()
             },
-            ..message.clone()
+            payload: message.payload.clone(),
         };
         let uncompressed_frame = FrameCodec::encode(&uncompressed_message).unwrap();
         assert!(frame.len() < uncompressed_frame.len(), "Compression should reduce size");
@@ -893,8 +909,8 @@ mod tests {
                 compressed: false,
             },
             payload: MessagePayload::Backpressure(BackpressureSignal {
-                level: 2,
-                pause_secs: Some(30),
+                throttle_delay_ms: 5000,
+                reason: Some("Server buffer threshold exceeded".to_string()),
             }),
         };
 
@@ -904,8 +920,8 @@ mod tests {
 
         match decoded.payload {
             MessagePayload::Backpressure(signal) => {
-                assert_eq!(signal.level, 2);
-                assert_eq!(signal.pause_secs, Some(30));
+                assert_eq!(signal.throttle_delay_ms, 5000);
+                assert_eq!(signal.reason, Some("Server buffer threshold exceeded".to_string()));
             }
             _ => panic!("Expected Backpressure payload"),
         }
@@ -937,7 +953,7 @@ mod tests {
 
         match decoded.payload {
             MessagePayload::Ack(ack) => {
-                assert_eq!(ack.message_id, 42);
+                assert_eq!(ack.message_id, test_message_id(42));
                 assert_eq!(ack.success, false);
                 assert_eq!(ack.error_code, Some(1001));
             }
@@ -953,12 +969,14 @@ mod tests {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
             total_cpu_percent: 100.0,
-            total_memory_bytes: 32_000_000_000,
+            memory_used_bytes: 30_000_000_000,
+            memory_total_bytes: 32_000_000_000,
             processes: (0..10000) // Large number of processes
                 .map(|i| ProcessSample {
                     pid: i,
                     name: format!("very-long-process-name-{}", i),
                     cpu_percent: 1.0,
+                    memory_percent: 0.003125,
                     memory_bytes: 1_000_000,
                     cmdline: Some(format!("/very/long/command/line/path/number/{}/with/many/args", i)),
                 })
@@ -994,16 +1012,26 @@ mod tests {
     fn test_cross_language_serialization_snapshot() {
         // This test serializes a Snapshot message for validation by .NET deserialization tests.
         // The encoded bytes are written to a file that .NET tests can read.
+        
+        // Helper to create test message ID
+        fn test_message_id(n: u64) -> [u8; 16] {
+            let mut id = [0u8; 16];
+            id[0..8].copy_from_slice(&n.to_le_bytes());
+            id
+        }
+        
         let snapshot = SnapshotPayload {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
             total_cpu_percent: 75.5,
-            total_memory_bytes: 16_000_000_000,
+            memory_used_bytes: 15_000_000_000,
+            memory_total_bytes: 16_000_000_000,
             processes: vec![
                 ProcessSample {
                     pid: 1001,
                     name: "chrome".to_string(),
                     cpu_percent: 45.0,
+                    memory_percent: 12.5,
                     memory_bytes: 2_000_000_000,
                     cmdline: Some("/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome".to_string()),
                 },
@@ -1011,6 +1039,7 @@ mod tests {
                     pid: 1002,
                     name: "firefox".to_string(),
                     cpu_percent: 20.0,
+                    memory_percent: 9.375,
                     memory_bytes: 1_500_000_000,
                     cmdline: Some("/usr/bin/firefox".to_string()),
                 },
@@ -1018,6 +1047,7 @@ mod tests {
                     pid: 1003,
                     name: "code".to_string(),
                     cpu_percent: 10.5,
+                    memory_percent: 5.0,
                     memory_bytes: 800_000_000,
                     cmdline: None,
                 },
@@ -1044,7 +1074,7 @@ mod tests {
         // Verify it's decodable on Rust side first
         let mut cursor = std::io::Cursor::new(&encoded);
         let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode");
-        assert_eq!(decoded.envelope.message_id, 42);
+        assert_eq!(decoded.envelope.message_id, test_message_id(42));
         assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
         
         // Write to file for cross-language testing
