@@ -1,3 +1,4 @@
+use crc32fast::Hasher;
 /// Binary protocol definitions and encoding for monitoring agent.
 ///
 /// This module implements the versioned binary protocol with:
@@ -5,11 +6,9 @@
 /// - Envelope: version, platform, timestamps, agent ID
 /// - zstd compression (level 3, negotiated)
 /// - At-least-once delivery semantics with retry and de-duplication
-
 use serde::de::Error as SerdeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::io::{self, Read, Write, Cursor};
-use crc32fast::Hasher;
+use std::io::{self, Cursor, Read, Write};
 
 /// Protocol version (MAJOR.MINOR format).
 ///
@@ -547,7 +546,10 @@ impl FrameCodec {
                 let throttle_delay_ms = read_u32_le(&mut payload_cursor)?;
                 let reason = read_optional_string(&mut payload_cursor)?;
 
-                MessagePayload::Backpressure(BackpressureSignal { throttle_delay_ms, reason })
+                MessagePayload::Backpressure(BackpressureSignal {
+                    throttle_delay_ms,
+                    reason,
+                })
             }
             MessageType::Error => {
                 let code = read_u32_le(&mut payload_cursor)?;
@@ -823,7 +825,10 @@ mod tests {
         assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
         match decoded.payload {
             MessagePayload::Snapshot(decoded_snapshot) => {
-                assert_eq!(decoded_snapshot.window_start_secs, snapshot.window_start_secs);
+                assert_eq!(
+                    decoded_snapshot.window_start_secs,
+                    snapshot.window_start_secs
+                );
                 assert_eq!(decoded_snapshot.processes.len(), 2);
                 assert_eq!(decoded_snapshot.processes[0].pid, 1234);
                 assert_eq!(decoded_snapshot.truncated, false);
@@ -869,7 +874,7 @@ mod tests {
 
         // Encode (should compress)
         let frame = FrameCodec::encode(&message).unwrap();
-        
+
         // Verify compression reduced size (heuristic: should be < uncompressed)
         let uncompressed_message = Message {
             envelope: Envelope {
@@ -879,7 +884,10 @@ mod tests {
             payload: message.payload.clone(),
         };
         let uncompressed_frame = FrameCodec::encode(&uncompressed_message).unwrap();
-        assert!(frame.len() < uncompressed_frame.len(), "Compression should reduce size");
+        assert!(
+            frame.len() < uncompressed_frame.len(),
+            "Compression should reduce size"
+        );
 
         // Decode and verify
         let mut cursor = Cursor::new(frame);
@@ -921,7 +929,10 @@ mod tests {
         match decoded.payload {
             MessagePayload::Backpressure(signal) => {
                 assert_eq!(signal.throttle_delay_ms, 5000);
-                assert_eq!(signal.reason, Some("Server buffer threshold exceeded".to_string()));
+                assert_eq!(
+                    signal.reason,
+                    Some("Server buffer threshold exceeded".to_string())
+                );
             }
             _ => panic!("Expected Backpressure payload"),
         }
@@ -978,7 +989,10 @@ mod tests {
                     cpu_percent: 1.0,
                     memory_percent: 0.003125,
                     memory_bytes: 1_000_000,
-                    cmdline: Some(format!("/very/long/command/line/path/number/{}/with/many/args", i)),
+                    cmdline: Some(format!(
+                        "/very/long/command/line/path/number/{}/with/many/args",
+                        i
+                    )),
                 })
                 .collect(),
             truncated: false,
@@ -1012,14 +1026,14 @@ mod tests {
     fn test_cross_language_serialization_snapshot() {
         // This test serializes a Snapshot message for validation by .NET deserialization tests.
         // The encoded bytes are written to a file that .NET tests can read.
-        
+
         // Helper to create test message ID
         fn test_message_id(n: u64) -> [u8; 16] {
             let mut id = [0u8; 16];
             id[0..8].copy_from_slice(&n.to_le_bytes());
             id
         }
-        
+
         let snapshot = SnapshotPayload {
             window_start_secs: 1703174400,
             window_end_secs: 1703174410,
@@ -1033,7 +1047,10 @@ mod tests {
                     cpu_percent: 45.0,
                     memory_percent: 12.5,
                     memory_bytes: 2_000_000_000,
-                    cmdline: Some("/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome".to_string()),
+                    cmdline: Some(
+                        "/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome"
+                            .to_string(),
+                    ),
                 },
                 ProcessSample {
                     pid: 1002,
@@ -1070,26 +1087,25 @@ mod tests {
 
         // Encode the message
         let encoded = FrameCodec::encode(&message).expect("Failed to encode");
-        
+
         // Verify it's decodable on Rust side first
         let mut cursor = std::io::Cursor::new(&encoded);
         let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode");
         assert_eq!(decoded.envelope.message_id, test_message_id(42));
         assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
-        
+
         // Write to file for cross-language testing
         use std::fs;
         use std::path::PathBuf;
-        
+
         let test_data_dir = PathBuf::from("../server/Tests/data");
         if !test_data_dir.exists() {
             fs::create_dir_all(&test_data_dir).ok();
         }
-        
+
         let file_path = test_data_dir.join("cross-language-snapshot.bin");
-        fs::write(&file_path, &encoded)
-            .expect("Failed to write test data file");
-        
+        fs::write(&file_path, &encoded).expect("Failed to write test data file");
+
         // Verify file was written
         let written = fs::read(&file_path).expect("Failed to read back test data");
         assert_eq!(written, encoded);

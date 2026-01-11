@@ -6,6 +6,13 @@
 # Rust/Cargo build artifacts
 target/
 
+# Demo artifacts
+tmp/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
 # User-specific files
 *.rsuser
 *.suo

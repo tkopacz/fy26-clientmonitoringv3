@@ -34,8 +34,10 @@ fn test_message_id(n: u64) -> [u8; 16] {
 #[test]
 fn protocol_version_same_is_compatible() {
     let v1_0 = ProtocolVersion { major: 1, minor: 0 };
-    assert!(v1_0.is_compatible_with(&v1_0), 
-            "Same version should be compatible");
+    assert!(
+        v1_0.is_compatible_with(&v1_0),
+        "Same version should be compatible"
+    );
 }
 
 #[test]
@@ -43,16 +45,20 @@ fn protocol_version_higher_minor_is_compatible() {
     let v1_0 = ProtocolVersion { major: 1, minor: 0 };
     let v1_1 = ProtocolVersion { major: 1, minor: 1 };
     // v1_1 is compatible with v1_0 (newer version can work with older protocol)
-    assert!(v1_1.is_compatible_with(&v1_0),
-            "Higher minor version should be compatible (forward compatible)");
+    assert!(
+        v1_1.is_compatible_with(&v1_0),
+        "Higher minor version should be compatible (forward compatible)"
+    );
 }
 
 #[test]
 fn protocol_version_different_major_is_incompatible() {
     let v1_0 = ProtocolVersion { major: 1, minor: 0 };
     let v2_0 = ProtocolVersion { major: 2, minor: 0 };
-    assert!(!v1_0.is_compatible_with(&v2_0),
-            "Different major version should not be compatible");
+    assert!(
+        !v1_0.is_compatible_with(&v2_0),
+        "Different major version should not be compatible"
+    );
 }
 
 // ============================================================================
@@ -78,7 +84,10 @@ fn message_type_from_u8_invalid_type() {
     // Test that invalid discriminants produce errors
     assert!(MessageType::from_u8(0).is_err(), "Type 0 should be invalid");
     assert!(MessageType::from_u8(8).is_err(), "Type 8 should be invalid");
-    assert!(MessageType::from_u8(255).is_err(), "Type 255 should be invalid");
+    assert!(
+        MessageType::from_u8(255).is_err(),
+        "Type 255 should be invalid"
+    );
 }
 
 // ============================================================================
@@ -193,7 +202,9 @@ fn encode_decode_snapshot_message() {
                     cpu_percent: 25.0,
                     memory_percent: 25.0,
                     memory_bytes: 2_000_000_000,
-                    cmdline: Some("/usr/bin/chrome --user-data-dir=~/.config/google-chrome".to_string()),
+                    cmdline: Some(
+                        "/usr/bin/chrome --user-data-dir=~/.config/google-chrome".to_string(),
+                    ),
                 },
                 ProcessSample {
                     pid: 1002,
@@ -273,11 +284,14 @@ fn encode_decode_backpressure_message() {
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode backpressure");
 
     assert_eq!(decoded.envelope.message_type, MessageType::Backpressure);
-    
+
     match decoded.payload {
         MessagePayload::Backpressure(bp) => {
             assert_eq!(bp.throttle_delay_ms, 5000);
-            assert_eq!(bp.reason, Some("Server buffer threshold exceeded".to_string()));
+            assert_eq!(
+                bp.reason,
+                Some("Server buffer threshold exceeded".to_string())
+            );
         }
         _ => panic!("Expected Backpressure payload"),
     }
@@ -290,7 +304,7 @@ fn backpressure_no_throttle() {
         throttle_delay_ms: 0,
         reason: None,
     };
-    
+
     assert_eq!(bp.throttle_delay_ms, 0, "0 means no throttle");
 }
 
@@ -300,7 +314,7 @@ fn backpressure_small_delay() {
         throttle_delay_ms: 100,
         reason: Some("Light throttle".to_string()),
     };
-    
+
     assert_eq!(bp.throttle_delay_ms, 100, "Small delay for light throttle");
 }
 
@@ -310,8 +324,11 @@ fn backpressure_large_delay() {
         throttle_delay_ms: 30000,
         reason: Some("Heavy throttle".to_string()),
     };
-    
-    assert_eq!(bp.throttle_delay_ms, 30000, "Large delay for heavy throttle");
+
+    assert_eq!(
+        bp.throttle_delay_ms, 30000,
+        "Large delay for heavy throttle"
+    );
 }
 
 // ============================================================================
@@ -332,7 +349,10 @@ fn encode_decode_with_compression() {
             cpu_percent: (i as f32) * 0.1,
             memory_percent: (i as f32) * 0.05,
             memory_bytes: (i as u64) * 1_000_000,
-            cmdline: Some(format!("/usr/bin/process-{:03} --arg1=value{} --arg2=/path/to/file", i, i)),
+            cmdline: Some(format!(
+                "/usr/bin/process-{:03} --arg1=value{} --arg2=/path/to/file",
+                i, i
+            )),
         });
     }
 
@@ -358,7 +378,7 @@ fn encode_decode_with_compression() {
     };
 
     let encoded = FrameCodec::encode(&message).expect("Failed to encode with compression");
-    
+
     // Verify it's compressed by checking it's smaller than uncompressed version
     let message_uncompressed = Message {
         envelope: Envelope {
@@ -372,18 +392,20 @@ fn encode_decode_with_compression() {
         },
         payload: message.payload.clone(),
     };
-    let encoded_uncompressed = FrameCodec::encode(&message_uncompressed)
-        .expect("Failed to encode without compression");
-    
-    assert!(encoded.len() < encoded_uncompressed.len(),
-            "Compressed frame ({}) should be smaller than uncompressed ({})",
-            encoded.len(),
-            encoded_uncompressed.len());
+    let encoded_uncompressed =
+        FrameCodec::encode(&message_uncompressed).expect("Failed to encode without compression");
+
+    assert!(
+        encoded.len() < encoded_uncompressed.len(),
+        "Compressed frame ({}) should be smaller than uncompressed ({})",
+        encoded.len(),
+        encoded_uncompressed.len()
+    );
 
     // Decode and verify
     let mut cursor = Cursor::new(&encoded);
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode compressed message");
-    
+
     assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
     assert_eq!(decoded.envelope.message_id, test_message_id(200));
 }
@@ -399,7 +421,7 @@ fn encode_decode_with_compression() {
 fn frame_size_validation_oversized_payload() {
     // Try to create a message that would exceed MAX_FRAME_SIZE when encoded
     let mut processes = Vec::new();
-    
+
     // Create enough processes to exceed 256 KB uncompressed
     for i in 0..10000 {
         processes.push(ProcessSample {
@@ -439,7 +461,7 @@ fn frame_size_validation_oversized_payload() {
     // Should fail to encode due to size
     let result = FrameCodec::encode(&message);
     assert!(result.is_err(), "Should reject oversized frame");
-    
+
     match result.unwrap_err() {
         ProtocolError::FrameTooLarge(size, max) => {
             assert!(size > max, "Reported size should exceed max");
@@ -473,7 +495,9 @@ fn cross_language_serialization_snapshot() {
                 cpu_percent: 45.0,
                 memory_percent: 12.5,
                 memory_bytes: 2_000_000_000,
-                cmdline: Some("/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome".to_string()),
+                cmdline: Some(
+                    "/usr/bin/chrome --user-data-dir=/home/user/.config/google-chrome".to_string(),
+                ),
             },
             ProcessSample {
                 pid: 1002,
@@ -510,17 +534,17 @@ fn cross_language_serialization_snapshot() {
 
     // Encode the message
     let encoded = FrameCodec::encode(&message).expect("Failed to encode");
-    
+
     // Verify it's decodable on Rust side first
     let mut cursor = std::io::Cursor::new(&encoded);
     let decoded = FrameCodec::decode(&mut cursor).expect("Failed to decode");
     assert_eq!(decoded.envelope.message_id, test_message_id(42));
     assert_eq!(decoded.envelope.message_type, MessageType::Snapshot);
-    
+
     // Write to file for cross-language testing
+    use std::env;
     use std::fs;
     use std::path::PathBuf;
-    use std::env;
 
     let test_data_dir = env::var("CROSS_LANG_TEST_DATA_DIR")
         .map(PathBuf::from)
@@ -537,8 +561,7 @@ fn cross_language_serialization_snapshot() {
     }
 
     let file_path = test_data_dir.join("cross-language-snapshot.bin");
-    fs::write(&file_path, &encoded)
-        .expect("Failed to write test data file");
+    fs::write(&file_path, &encoded).expect("Failed to write test data file");
     // Verify file was written
     let written = fs::read(&file_path).expect("Failed to read back test data");
     assert_eq!(written, encoded, "Written file should match encoded data");
@@ -654,16 +677,14 @@ fn snapshot_with_truncation_flag() {
             total_cpu_percent: 95.0,
             memory_used_bytes: 28_000_000_000,
             memory_total_bytes: 30_000_000_000,
-            processes: vec![
-                ProcessSample {
-                    pid: 1,
-                    name: "init".to_string(),
-                    cpu_percent: 0.1,
-                    memory_percent: 0.003,
-                    memory_bytes: 1_000_000,
-                    cmdline: None,
-                },
-            ],
+            processes: vec![ProcessSample {
+                pid: 1,
+                name: "init".to_string(),
+                cpu_percent: 0.1,
+                memory_percent: 0.003,
+                memory_bytes: 1_000_000,
+                cmdline: None,
+            }],
             truncated: true, // Flag indicates more processes were filtered out
         }),
     };
