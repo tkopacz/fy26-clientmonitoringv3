@@ -55,6 +55,8 @@ An operator can diagnose corrupted/malformed compressed bodies without losing th
 
 1. **Given** a message indicates a compressed body, **When** decompression fails, **Then** the receiver surfaces a protocol error that includes the message id/type and does not misinterpret subsequent frames.
 
+**Story sequencing note**: Each user story remains independently testable, but implementation is expected to follow priority order (P1 → P2 → P3) because later stories reuse the stable decode and negotiation paths established earlier.
+
 ### Edge Cases
 
 - Compression indicator set but body is not compressed (or uses a different algorithm).
@@ -103,6 +105,8 @@ An operator can diagnose corrupted/malformed compressed bodies without losing th
 
 ### Measurable Outcomes
 
-- **SC-001**: Receivers can extract required header/envelope metadata for 100% of valid frames without attempting decompression.
-- **SC-002**: When body-only compression is enabled, messages with body/payload size ≥ 4 KiB show an average size reduction of at least 20% compared to uncompressed transmission, without increasing message failure rate.
-- **SC-003**: When decompression fails for a frame, the receiver emits an explicit error outcome that includes message identity metadata and continues processing subsequent valid frames.
+- **SC-001**: Using a shared valid-frame corpus (compressed + uncompressed fixtures that pass framing, CRC, and schema checks), receivers extract required header/envelope metadata for 100% of corpus frames before any body decompression step.
+- **SC-002**: Using a fixed corpus of at least 1,000 messages with payload size ≥ 4 KiB, body-only compression yields an average on-wire body byte reduction of at least 20% versus uncompressed transmission.
+	- Baseline failure rate is measured from the uncompressed run on the same corpus.
+	- Compressed-run failure rate MAY increase by at most 0.1 percentage points versus baseline.
+- **SC-003**: In a deterministic negative-test suite of at least 20 malformed compressed frames, 100% of failures produce explicit error outcomes with message identity metadata and 100% of immediately subsequent valid frames are accepted.
